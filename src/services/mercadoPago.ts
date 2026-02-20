@@ -12,6 +12,7 @@ export interface MercadoPagoStatusResponse {
 export interface PixKeyResponse {
   pixKey: string | null;
   pixKeyType: string | null;
+  hasPixKey?: boolean;
 }
 
 export interface VerifyApiKeyResponse {
@@ -36,17 +37,40 @@ function normalizePixKeyPayload(payload: any): PixKeyResponse {
     source?.pix_key ??
     source?.key ??
     source?.pix ??
+    source?.value ??
+    source?.pixValue ??
+    source?.pix_value ??
     null;
   const pixKeyType =
     source?.pixKeyType ??
     source?.pix_key_type ??
     source?.type ??
+    source?.keyType ??
+    source?.key_type ??
     null;
 
+  const hasPixKeyRaw =
+    source?.hasPixKey ??
+    source?.has_pix_key ??
+    source?.pixConfigured ??
+    source?.pix_configured ??
+    source?.configured ??
+    source?.isConfigured;
+
+  const normalizedKey = typeof pixKey === "string" ? pixKey.trim() : "";
+  const hasPixKey = hasPixKeyRaw === true || normalizedKey.length > 0;
+
   return {
-    pixKey: typeof pixKey === "string" ? pixKey : null,
+    pixKey: normalizedKey.length > 0 ? normalizedKey : null,
     pixKeyType: typeof pixKeyType === "string" ? pixKeyType : null,
+    hasPixKey,
   };
+}
+
+export function isPixConfigured(data: PixKeyResponse | null | undefined): boolean {
+  if (!data) return false;
+  if (data.hasPixKey === true) return true;
+  return !!data.pixKey && data.pixKey.trim().length > 0;
 }
 
 function normalizeStatusPayload(payload: any): MercadoPagoStatusResponse {
@@ -88,7 +112,14 @@ export const mercadoPagoService = {
   },
 
   savePixKey: async (pixKey: string, pixKeyType: string): Promise<PixKeyResponse> => {
-    const { data } = await api.post<PixKeyResponse>("/api/user/pix-key", { pixKey, pixKeyType });
+    const { data } = await api.post<PixKeyResponse>("/api/user/pix-key", {
+      pixKey,
+      pixKeyType,
+      pix_key: pixKey,
+      pix_key_type: pixKeyType,
+      key: pixKey,
+      type: pixKeyType,
+    });
     return normalizePixKeyPayload(data);
   },
 

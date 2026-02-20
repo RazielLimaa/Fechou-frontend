@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { mercadoPagoService } from "../../services/mercadoPago";
+import { mercadoPagoService, isPixConfigured } from "../../services/mercadoPago";
 import type {
   MercadoPagoStatusResponse,
   VerifyApiKeyResponse,
@@ -213,7 +213,7 @@ export const PaymentSettingsPage = () => {
     queryFn: mercadoPagoService.getPixKey, // ✅ evita "No queryFn"
   });
 
-  const hasPixKey = !!pixData?.pixKey;
+  const hasPixKey = isPixConfigured(pixData);
 
   const savePixMutation = useMutation({
     mutationFn: ({ key, type }: { key: string; type: string }) => mercadoPagoService.savePixKey(key, type),
