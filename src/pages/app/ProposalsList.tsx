@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { proposalsService } from "../../services/proposals";
-import { mercadoPagoService } from "../../services/mercadoPago";
+import { mercadoPagoService, isPixConfigured } from "../../services/mercadoPago";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
@@ -53,7 +53,7 @@ export default function ProposalsList() {
     queryFn: mercadoPagoService.getPixKey,
   });
 
-  const isPaymentConfigured = !!pixData?.pixKey;
+  const isPaymentConfigured = isPixConfigured(pixData);
 
   const shareMutation = useMutation({
     mutationFn: (id: string) => proposalsService.generateShareLink(id),

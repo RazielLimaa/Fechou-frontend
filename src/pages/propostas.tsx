@@ -6,7 +6,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } 
 
 import { listProposals, generateShareLink, type ApiProposal, type ApiProposalStatus } from "../service/proposals";
 import { getMyPlan, type PlanId, confirmSubscriptionCheckout } from "../service/payment";
-import { mercadoPagoService } from "../services/mercadoPago";
+import { mercadoPagoService, isPixConfigured } from "../services/mercadoPago";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 
@@ -143,7 +143,7 @@ export default function Propostas() {
     // Check PIX key status separately (don't block main load if it fails)
     try {
       const pixData = await mercadoPagoService.getPixKey();
-      setHasPixKey(!!pixData.pixKey && pixData.pixKey.trim().length > 0);
+      setHasPixKey(isPixConfigured(pixData));
     } catch {
       setHasPixKey(false);
     } finally {

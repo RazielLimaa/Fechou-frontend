@@ -3,12 +3,12 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { mercadoPagoService } from "../../services/mercadoPago";
+import { mercadoPagoService, isPixConfigured } from "../../services/mercadoPago";
 import type {
   MercadoPagoStatusResponse,
   VerifyApiKeyResponse,
+  PixKeyResponse,
 } from "../../services/mercadoPago";
-import { api } from "../../services/api";
 
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -50,25 +50,6 @@ import {
  *  DELETE /api/user/pix-key
  */
 type PixKeyType = "cpf" | "cnpj" | "email" | "phone" | "random";
-
-export interface PixKeyResponse {
-  pixKey: string | null;
-  pixKeyType: string | null;
-}
-
-const pixService = {
-  getPixKey: async (): Promise<PixKeyResponse> => {
-    const { data } = await api.get<PixKeyResponse>("/api/user/pix-key");
-    return data;
-  },
-  savePixKey: async (pixKey: string, pixKeyType: string): Promise<PixKeyResponse> => {
-    const { data } = await api.post<PixKeyResponse>("/api/user/pix-key", { pixKey, pixKeyType });
-    return data;
-  },
-  deletePixKey: async (): Promise<void> => {
-    await api.delete("/api/user/pix-key");
-  },
-};
 
 const PIX_KEY_TYPES: {
   value: PixKeyType;
@@ -229,14 +210,15 @@ export const PaymentSettingsPage = () => {
     refetch: refetchPix,
   } = useQuery<PixKeyResponse>({
     queryKey: ["pix-key"],
-    queryFn: pixService.getPixKey, // ✅ evita "No queryFn"
+    queryFn: mercadoPagoService.getPixKey, // ✅ evita "No queryFn"
   });
 
-  const hasPixKey = !!pixData?.pixKey;
+  const hasPixKey = isPixConfigured(pixData);
 
   const savePixMutation = useMutation({
-    mutationFn: ({ key, type }: { key: string; type: string }) => pixService.savePixKey(key, type),
-    onSuccess: () => {
+    mutationFn: ({ key, type }: { key: string; type: string }) => mercadoPagoService.savePixKey(key, type),
+    onSuccess: (savedPix) => {
+      queryClient.setQueryData(["pix-key"], savedPix);
       queryClient.invalidateQueries({ queryKey: ["pix-key"] });
       setPixKeyInput("");
       setIsEditingPix(false);
@@ -248,8 +230,9 @@ export const PaymentSettingsPage = () => {
   });
 
   const deletePixMutation = useMutation({
-    mutationFn: () => pixService.deletePixKey(),
+    mutationFn: () => mercadoPagoService.deletePixKey(),
     onSuccess: () => {
+      queryClient.setQueryData(["pix-key"], { pixKey: null, pixKeyType: null });
       queryClient.invalidateQueries({ queryKey: ["pix-key"] });
       setIsEditingPix(false);
       toast.success("Chave PIX removida.");
