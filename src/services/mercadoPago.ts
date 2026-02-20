@@ -5,6 +5,13 @@ export interface MercadoPagoStatusResponse {
   authMethod: "oauth" | "api_key" | null;
   mpUserId: string | null;
   expiresAt: string | null;
+  pixKey?: string | null;
+  pixKeyType?: string | null;
+}
+
+export interface PixKeyResponse {
+  pixKey: string | null;
+  pixKeyType: string | null;
 }
 
 export interface VerifyApiKeyResponse {
@@ -21,13 +28,72 @@ export interface RegisterApiKeyResponse {
   nickname: string | null;
 }
 
+function normalizePixKeyPayload(payload: any): PixKeyResponse {
+  const source = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+
+  const pixKey =
+    source?.pixKey ??
+    source?.pix_key ??
+    source?.key ??
+    source?.pix ??
+    null;
+  const pixKeyType =
+    source?.pixKeyType ??
+    source?.pix_key_type ??
+    source?.type ??
+    null;
+
+  return {
+    pixKey: typeof pixKey === "string" ? pixKey : null,
+    pixKeyType: typeof pixKeyType === "string" ? pixKeyType : null,
+  };
+}
+
+function normalizeStatusPayload(payload: any): MercadoPagoStatusResponse {
+  const source = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+
+  const connectedRaw = source?.connected ?? source?.isConnected ?? source?.status;
+  const connected = connectedRaw === true || connectedRaw === "connected";
+
+  const authMethodRaw = source?.authMethod ?? source?.auth_method ?? null;
+  const authMethod = authMethodRaw === "oauth" || authMethodRaw === "api_key" ? authMethodRaw : null;
+
+  const mpUserIdRaw = source?.mpUserId ?? source?.mp_user_id ?? null;
+  const expiresAtRaw = source?.expiresAt ?? source?.expires_at ?? null;
+
+  const pix = normalizePixKeyPayload(source);
+
+  return {
+    connected,
+    authMethod,
+    mpUserId: typeof mpUserIdRaw === "string" ? mpUserIdRaw : null,
+    expiresAt: typeof expiresAtRaw === "string" ? expiresAtRaw : null,
+    pixKey: pix.pixKey,
+    pixKeyType: pix.pixKeyType,
+  };
+}
+
 export const mercadoPagoService = {
   /**
    * GET /api/mercadopago/status
    */
   getStatus: async (): Promise<MercadoPagoStatusResponse> => {
     const { data } = await api.get<MercadoPagoStatusResponse>("/api/mercadopago/status");
-    return data;
+    return normalizeStatusPayload(data);
+  },
+
+  getPixKey: async (): Promise<PixKeyResponse> => {
+    const { data } = await api.get<PixKeyResponse>("/api/user/pix-key");
+    return normalizePixKeyPayload(data);
+  },
+
+  savePixKey: async (pixKey: string, pixKeyType: string): Promise<PixKeyResponse> => {
+    const { data } = await api.post<PixKeyResponse>("/api/user/pix-key", { pixKey, pixKeyType });
+    return normalizePixKeyPayload(data);
+  },
+
+  deletePixKey: async (): Promise<void> => {
+    await api.delete("/api/user/pix-key");
   },
 
   /**
