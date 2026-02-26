@@ -30,45 +30,12 @@ import {
 import { useLocation } from "wouter";
 import { usePlan } from "../hooks/use-plan";
 import { useQuery } from "@tanstack/react-query";
-import { listProposals } from "../service/proposals";
-import { toast } from "sonner";
+import { exportPremiumDashboardCsv, getPremiumDashboard } from "../service/proposals";
 
 // =====================
 // Types
 // =====================
 type PeriodType = "monthly" | "weekly";
-type ProposalStatus = "pendente" | "vendida" | "cancelada" | string;
-
-type Proposal = {
-  id: string | number;
-  title: string;
-  clientName: string;
-  status: ProposalStatus;
-  value: string; // no seu código, value chega como string
-  createdAt: string;
-};
-
-type InsightLevel = "info" | "warning" | "critical";
-
-type Insight = {
-  id: string;
-  level: InsightLevel;
-  title: string;
-  description: string;
-  metric?: string;
-};
-
-type NextAction = {
-  id: string;
-  title: string;
-  description: string;
-  priority: "P1" | "P2" | "P3";
-};
-
-// =====================
-// Constants / UI helpers
-// =====================
-const COLORS = ["#FF6600", "#FF9933", "#FFCC66", "#CCCCCC"] as const;
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", {
@@ -77,319 +44,30 @@ const formatCurrency = (value: number) =>
     minimumFractionDigits: 2,
   }).format(value);
 
-const toNumber = (rawValue: string) => {
-  if (!rawValue) return 0;
-  // "1.234,56" -> 1234.56
-  return Number(rawValue.replace(/\./g, "").replace(",", ".")) || 0;
-};
-
-const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-
-const daysBetween = (isoDate: string, now = new Date()) => {
-  const d = new Date(isoDate);
-  const ms = now.getTime() - d.getTime();
-  return Math.max(0, Math.floor(ms / 86400000));
-};
-
-const getISOWeek = (date: Date) => {
-  const workingDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = workingDate.getUTCDay() || 7;
-  workingDate.setUTCDate(workingDate.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(workingDate.getUTCFullYear(), 0, 1));
-  return Math.ceil((((workingDate.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-};
-
-const csvEscape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-
-const levelStyles: Record<InsightLevel, { badge: string; ring: string; icon: React.ComponentType<any> }> = {
-  info: { badge: "bg-white/5 text-muted-foreground", ring: "border-white/10", icon: AlertCircle },
-  warning: { badge: "bg-amber-500/10 text-amber-300", ring: "border-amber-500/20", icon: TriangleAlert },
-  critical: { badge: "bg-rose-500/10 text-rose-300", ring: "border-rose-500/20", icon: TriangleAlert },
-};
-
-// =====================
-// Premium analytics logic
-// =====================
-function computeHealthScore(params: {
-  total: number;
-  sold: number;
-  pending: number;
-  canceled: number;
-  totalRevenue: number;
-  avgTicket: number;
-  pendingAgingAvg: number;
-  recentSoldCount: number;
-}) {
-  const {
-    total,
-    sold,
-    pending,
-    canceled,
-    totalRevenue,
-    avgTicket,
-    pendingAgingAvg,
-    recentSoldCount,
-  } = params;
-
-  if (total === 0) {
-    return { score: 0, reasons: ["Sem dados suficientes ainda."] };
-  }
-
-  const conversion = sold / total; // 0..1
-  const pendingRate = pending / total;
-  const canceledRate = canceled / total;
-
-  let score = 100;
-
-  // Conversão
-  if (conversion < 0.10) score -= 30;
-  else if (conversion < 0.20) score -= 18;
-  else if (conversion < 0.30) score -= 10;
-
-  // Pendência alta
-  if (pendingRate > 0.60) score -= 20;
-  else if (pendingRate > 0.45) score -= 12;
-
-  // Cancelamento
-  if (canceledRate > 0.25) score -= 18;
-  else if (canceledRate > 0.15) score -= 10;
-
-  // Pendências “velhas”
-  if (pendingAgingAvg > 14) score -= 14;
-  else if (pendingAgingAvg > 7) score -= 8;
-
-  // Receita / ticket: dá bônus leve, mas sem exagero
-  if (totalRevenue > 0) score += 4;
-  if (avgTicket > 0) score += 3;
-
-  // “Vendas recentes” (proxy simples)
-  if (recentSoldCount === 0) score -= 10;
-
-  score = clamp(score, 0, 100);
-
-  const reasons: string[] = [];
-  reasons.push(`Conversão: ${(conversion * 100).toFixed(1)}%`);
-  reasons.push(`Pendências: ${(pendingRate * 100).toFixed(1)}%`);
-  reasons.push(`Cancelamentos: ${(canceledRate * 100).toFixed(1)}%`);
-  reasons.push(`Aging médio pendente: ${pendingAgingAvg.toFixed(0)} dias`);
-  reasons.push(`Vendas recentes (30d): ${recentSoldCount}`);
-
-  return { score, reasons };
-}
-
-function generateInsights(params: {
-  total: number;
-  sold: number;
-  pending: number;
-  canceled: number;
-  conversionRatePct: number;
-  totalRevenue: number;
-  avgTicket: number;
-  pendingValue: number;
-  pendingAgingAvg: number;
-  biggestPending?: { title: string; clientName: string; value: number; daysOpen: number };
-  trend?: { lastPeriodSold: number; prevPeriodSold: number };
-}) {
-  const {
-    total,
-    sold,
-    pending,
-    canceled,
-    conversionRatePct,
-    totalRevenue,
-    avgTicket,
-    pendingValue,
-    pendingAgingAvg,
-    biggestPending,
-    trend,
-  } = params;
-
-  const out: Insight[] = [];
-
-  if (total === 0) {
-    out.push({
-      id: "no-data",
-      level: "info",
-      title: "Sem dados suficientes",
-      description: "Crie ou importe propostas para liberar métricas e insights.",
-    });
-    return out;
-  }
-
-  // 1) Conversão baixa
-  if (conversionRatePct < 15) {
-    out.push({
-      id: "low-conversion",
-      level: "warning",
-      title: "Conversão abaixo do ideal",
-      description: `Sua conversão está em ${conversionRatePct.toFixed(1)}%. Priorize follow-up nas pendências de maior valor.`,
-      metric: `${conversionRatePct.toFixed(1)}%`,
-    });
-  } else {
-    out.push({
-      id: "conversion-ok",
-      level: "info",
-      title: "Conversão saudável",
-      description: `Conversão atual em ${conversionRatePct.toFixed(1)}%. Mantenha consistência e reduza aging nas pendências.`,
-      metric: `${conversionRatePct.toFixed(1)}%`,
-    });
-  }
-
-  // 2) Pendência alta + aging
-  const pendingRate = pending / total;
-  if (pendingRate > 0.55) {
-    out.push({
-      id: "pending-high",
-      level: pendingAgingAvg > 10 ? "critical" : "warning",
-      title: "Volume alto de pendências",
-      description: `Pendências representam ${(pendingRate * 100).toFixed(1)}% do funil. Aging médio de ${pendingAgingAvg.toFixed(
-        0
-      )} dias.`,
-      metric: `${pending} pendentes`,
-    });
-  }
-
-  // 3) Sem receita
-  if (totalRevenue === 0 && sold === 0) {
-    out.push({
-      id: "no-revenue",
-      level: "critical",
-      title: "Nenhuma receita realizada",
-      description: "Você ainda não registrou vendas. Comece atacando as pendências mais valiosas e recentes.",
-    });
-  }
-
-  // 4) Cancelamento
-  const canceledRate = canceled / total;
-  if (canceledRate > 0.2) {
-    out.push({
-      id: "canceled-high",
-      level: "warning",
-      title: "Cancelamentos acima do normal",
-      description: `Taxa de cancelamento em ${(canceledRate * 100).toFixed(1)}%. Revise preço/escopo e tempo de resposta.`,
-    });
-  }
-
-  // 5) Maior pendência
-  if (biggestPending) {
-    out.push({
-      id: "biggest-pending",
-      level: "info",
-      title: "Maior oportunidade em aberto",
-      description: `“${biggestPending.title}” (${biggestPending.clientName}) está pendente há ${biggestPending.daysOpen} dias.`,
-      metric: formatCurrency(biggestPending.value),
-    });
-  }
-
-  // 6) Tendência (comparação simples de períodos)
-  if (trend) {
-    const { lastPeriodSold, prevPeriodSold } = trend;
-    if (prevPeriodSold > 0) {
-      const deltaPct = ((lastPeriodSold - prevPeriodSold) / prevPeriodSold) * 100;
-      if (deltaPct <= -25) {
-        out.push({
-          id: "trend-drop",
-          level: "warning",
-          title: "Queda de vendas no período",
-          description: `Vendas caíram ${Math.abs(deltaPct).toFixed(0)}% vs. período anterior. Aja nas pendências e no SLA.`,
-          metric: `${lastPeriodSold} vendidos`,
-        });
-      } else if (deltaPct >= 25) {
-        out.push({
-          id: "trend-up",
-          level: "info",
-          title: "Crescimento de vendas no período",
-          description: `Vendas subiram ${deltaPct.toFixed(0)}% vs. período anterior. Replique os canais e cadência.`,
-          metric: `${lastPeriodSold} vendidos`,
-        });
-      }
-    }
-  }
-
-  // Ordena por severidade
-  const weight: Record<InsightLevel, number> = { critical: 3, warning: 2, info: 1 };
-  out.sort((a, b) => weight[b.level] - weight[a.level]);
-
-  return out.slice(0, 6);
-}
-
-function generateNextActions(params: {
-  pending: Array<Proposal & { numericValue: number; daysOpen: number }>;
-  soldCount: number;
-  pendingCount: number;
-  conversionRatePct: number;
-}) {
-  const { pending, soldCount, pendingCount, conversionRatePct } = params;
-
-  const actions: NextAction[] = [];
-
-  // P1: pendências antigas e valiosas
-  const pendingOldHigh = pending
-    .filter((p) => p.daysOpen >= 7)
-    .sort((a, b) => b.numericValue - a.numericValue)
-    .slice(0, 3);
-
-  if (pendingOldHigh.length > 0) {
-    actions.push({
-      id: "p1-old-high",
-      priority: "P1",
-      title: "Atacar pendências antigas de alto valor",
-      description: `Você tem ${pendingOldHigh.length} pendências ≥7 dias com alto valor. Priorize follow-up e prazo.`,
-    });
-  }
-
-  // P1: conversão baixa
-  if (conversionRatePct < 15 && pendingCount > 0) {
-    actions.push({
-      id: "p1-conversion",
-      priority: "P1",
-      title: "Melhorar conversão do funil",
-      description: "Crie um playbook simples de follow-up (D+1, D+3, D+7) e teste ajustes de proposta/preço.",
-    });
-  }
-
-  // P2: se vendeu pouco, atacar cadência
-  if (soldCount === 0 && pendingCount > 0) {
-    actions.push({
-      id: "p2-first-sale",
-      priority: "P2",
-      title: "Buscar primeira venda",
-      description: "Selecione 5 pendências mais recentes e faça contato hoje com CTA claro (assinatura/pagamento).",
-    });
-  }
-
-  // P3: higiene
-  actions.push({
-    id: "p3-hygiene",
-    priority: "P3",
-    title: "Higienizar funil",
-    description: "Revisar propostas canceladas para entender motivos e ajustar template de proposta.",
-  });
-
-  // Ordena P1>P2>P3
-  const w = { P1: 3, P2: 2, P3: 1 };
-  actions.sort((a, b) => w[b.priority] - w[a.priority]);
-
-  return actions.slice(0, 5);
-}
-
-// =====================
-// Component
-// =====================
 export default function PremiumDashboard() {
   const [, navigate] = useLocation();
   const { plan, loading: planLoading } = usePlan();
   const [viewMode, setViewMode] = useState<PeriodType>("monthly");
 
-  const { data, isLoading: proposalsLoading } = useQuery({
-    queryKey: ["proposals"],
-    queryFn: listProposals,
+  useEffect(() => {
+    mercadoPagoService.getStatus()
+      .then(setMpStatus)
+      .catch(() => setMpStatus({ connected: false, authMethod: null, mpUserId: null, expiresAt: null }));
+  }, []);
+
+  const handleConnectMP = () => {
+    mercadoPagoService.connectOAuth();
+  };
+
+  const { data: dashboard, isLoading: proposalsLoading } = useQuery({
+    queryKey: ["premium-dashboard", viewMode],
+    queryFn: () => getPremiumDashboard(viewMode),
   });
 
   const proposals = (data ?? []) as Proposal[];
 
   const stats = useMemo(() => {
-    if (!proposals.length) {
+    if (!dashboard) {
       return {
         soldCount: 0,
         pendingCount: 0,
@@ -410,319 +88,31 @@ export default function PremiumDashboard() {
       };
     }
 
-    const now = new Date();
-
-    const sold = proposals.filter((p) => p.status === "vendida");
-    const pending = proposals.filter((p) => p.status === "pendente");
-    const canceled = proposals.filter((p) => p.status === "cancelada");
-
-    const soldRevenue = sold.reduce((acc, p) => acc + toNumber(p.value), 0);
-    const pendingValue = pending.reduce((acc, p) => acc + toNumber(p.value), 0);
-
-    const total = proposals.length;
-    const conversionRatePct = total > 0 ? (sold.length / total) * 100 : 0;
-    const avgTicket = sold.length > 0 ? soldRevenue / sold.length : 0;
-
-    // Grouping by period for bar chart
-    const grouped = new Map<string, { sold: number; pending: number; revenue: number }>();
-
-    proposals.forEach((p) => {
-      const createdAt = new Date(p.createdAt);
-      const key =
-        viewMode === "monthly"
-          ? `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, "0")}`
-          : `${createdAt.getFullYear()}-W${String(getISOWeek(createdAt)).padStart(2, "0")}`;
-
-      const existing = grouped.get(key) || { sold: 0, pending: 0, revenue: 0 };
-
-      if (p.status === "vendida") {
-        existing.sold += 1;
-        existing.revenue += toNumber(p.value);
-      }
-      if (p.status === "pendente") {
-        existing.pending += 1;
-      }
-
-      grouped.set(key, existing);
-    });
-
-    const chartData = Array.from(grouped.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, values]) => ({
-        name,
-        sold: values.sold,
-        pending: values.pending,
-        revenue: Number(values.revenue.toFixed(2)),
-      }));
-
-    // “Sparkline” de receita (usa os últimos 10 pontos do chartData)
-    const revenueSpark = chartData.slice(-10).map((d) => ({ name: d.name, revenue: d.revenue }));
-
-    // Pendências ranqueadas
-    const pendingRanked = pending
-      .map((p) => ({
-        ...p,
-        numericValue: toNumber(p.value),
-        daysOpen: daysBetween(p.createdAt, now),
-      }))
-      .sort((a, b) => b.numericValue - a.numericValue);
-
-    // Pending reasons (fake, mas estável e “premium”)
-    const pendingReasons = [
-      { name: "Aguardando Assinatura", value: Math.max(0, Math.round(pending.length * 0.45)) },
-      { name: "Aguardando Pagamento", value: Math.max(0, Math.round(pending.length * 0.35)) },
-      { name: "Em Revisão", value: Math.max(0, Math.round(pending.length * 0.2)) },
-    ].filter((x) => x.value > 0);
-
-    // Trend simples: compara último período vs anterior
-    const last = chartData.at(-1);
-    const prev = chartData.at(-2);
-    const trend = {
-      lastPeriodSold: last?.sold ?? 0,
-      prevPeriodSold: prev?.sold ?? 0,
-    };
-
     return {
-      soldCount: sold.length,
-      pendingCount: pending.length,
-      canceledCount: canceled.length,
-      totalValue: soldRevenue,
-      pendingValue,
-      avgTicket,
-      conversionRatePct,
-      chartData,
-      pendingReasons,
-      pendingRanked,
-      trend,
-      revenueSpark,
+      soldCount: dashboard.soldCount,
+      pendingCount: dashboard.pendingCount,
+      totalValue: dashboard.totalValue,
+      chartData: dashboard.chartData,
+      pendingReasons: dashboard.pendingReasons,
     };
-  }, [proposals, viewMode]);
+  }, [dashboard]);
 
-  const premium = useMemo(() => {
-    const total = proposals.length;
-    const pendingAgingAvg =
-      stats.pendingRanked.length > 0
-        ? stats.pendingRanked.reduce((acc, p) => acc + p.daysOpen, 0) / stats.pendingRanked.length
-        : 0;
-
-    // proxy “vendas recentes”: vendidos nos últimos 30 dias
-    const recentSoldCount = proposals.filter((p) => p.status === "vendida" && daysBetween(p.createdAt) <= 30).length;
-
-    const biggestPending = stats.pendingRanked[0]
-      ? {
-          title: stats.pendingRanked[0].title,
-          clientName: stats.pendingRanked[0].clientName,
-          value: stats.pendingRanked[0].numericValue,
-          daysOpen: stats.pendingRanked[0].daysOpen,
-        }
-      : undefined;
-
-    const health = computeHealthScore({
-      total,
-      sold: stats.soldCount,
-      pending: stats.pendingCount,
-      canceled: stats.canceledCount,
-      totalRevenue: stats.totalValue,
-      avgTicket: stats.avgTicket,
-      pendingAgingAvg,
-      recentSoldCount,
-    });
-
-    const insights = generateInsights({
-      total,
-      sold: stats.soldCount,
-      pending: stats.pendingCount,
-      canceled: stats.canceledCount,
-      conversionRatePct: stats.conversionRatePct,
-      totalRevenue: stats.totalValue,
-      avgTicket: stats.avgTicket,
-      pendingValue: stats.pendingValue,
-      pendingAgingAvg,
-      biggestPending,
-      trend: stats.trend,
-    });
-
-    const actions = generateNextActions({
-      pending: stats.pendingRanked,
-      soldCount: stats.soldCount,
-      pendingCount: stats.pendingCount,
-      conversionRatePct: stats.conversionRatePct,
-    });
-
-    return { pendingAgingAvg, recentSoldCount, biggestPending, health, insights, actions };
-  }, [proposals, stats]);
-
-  const exportToExcel = () => {
-    if (!proposals.length) {
-      toast.error("Nenhuma proposta para exportar.");
-      return;
+  const exportToExcel = async () => {
+    try {
+      const blob = await exportPremiumDashboardCsv();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `PowerBI_Vendas_Completo_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Exportação gerada com sucesso!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível exportar o CSV.");
     }
-
-    const monthNames = [
-      "Janeiro",
-      "Fevereiro",
-      "Março",
-      "Abril",
-      "Maio",
-      "Junho",
-      "Julho",
-      "Agosto",
-      "Setembro",
-      "Outubro",
-      "Novembro",
-      "Dezembro",
-    ];
-
-    const pendingReasons = ["Aguardando Assinatura", "Aguardando Pagamento", "Em Revisão"];
-
-    const monthlyMap = new Map<string, { sold: number; pending: number; revenue: number; total: number }>();
-    const weeklyMap = new Map<string, { sold: number; pending: number; revenue: number; total: number }>();
-
-    proposals.forEach((proposal) => {
-      const createdAt = new Date(proposal.createdAt);
-      const monthlyKey = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, "0")}`;
-      const weeklyKey = `${createdAt.getFullYear()}-W${String(getISOWeek(createdAt)).padStart(2, "0")}`;
-      const value = toNumber(proposal.value);
-
-      const updateMap = (
-        map: Map<string, { sold: number; pending: number; revenue: number; total: number }>,
-        key: string
-      ) => {
-        const current = map.get(key) || { sold: 0, pending: 0, revenue: 0, total: 0 };
-        current.total += 1;
-
-        if (proposal.status === "vendida") {
-          current.sold += 1;
-          current.revenue += value;
-        }
-        if (proposal.status === "pendente") {
-          current.pending += 1;
-        }
-
-        map.set(key, current);
-      };
-
-      updateMap(monthlyMap, monthlyKey);
-      updateMap(weeklyMap, weeklyKey);
-    });
-
-    const overallAvgTicket = stats.soldCount ? stats.totalValue / stats.soldCount : 0;
-
-    const headers = [
-      "proposal_id",
-      "titulo_proposta",
-      "cliente",
-      "status",
-      "valor_brl",
-      "data_criacao_iso",
-      "ano",
-      "trimestre",
-      "mes_numero",
-      "mes_nome",
-      "semana_iso",
-      "periodo_mensal",
-      "periodo_semanal",
-      "is_vendida",
-      "is_pendente",
-      "is_cancelada",
-      "receita_realizada_brl",
-      "motivo_pendencia",
-      "dias_aberta",
-      "mensal_total_contratos",
-      "mensal_contratos_vendidos",
-      "mensal_contratos_pendentes",
-      "mensal_receita_total_brl",
-      "mensal_taxa_conversao_percentual",
-      "mensal_ticket_medio_brl",
-      "semanal_total_contratos",
-      "semanal_contratos_vendidos",
-      "semanal_contratos_pendentes",
-      "semanal_receita_total_brl",
-      "semanal_taxa_conversao_percentual",
-      "semanal_ticket_medio_brl",
-      "kpi_total_contratos_vendidos_geral",
-      "kpi_receita_total_geral_brl",
-      "kpi_contratos_pendentes_geral",
-      "kpi_ticket_medio_geral_brl",
-      "health_score_0_100",
-      "pendencias_aging_medio_dias",
-    ];
-
-    const rows = proposals.map((proposal) => {
-      const createdAt = new Date(proposal.createdAt);
-      const value = toNumber(proposal.value);
-      const year = createdAt.getFullYear();
-      const month = createdAt.getMonth() + 1;
-      const isoWeek = getISOWeek(createdAt);
-      const monthlyKey = `${year}-${String(month).padStart(2, "0")}`;
-      const weeklyKey = `${year}-W${String(isoWeek).padStart(2, "0")}`;
-      const monthAgg = monthlyMap.get(monthlyKey) || { sold: 0, pending: 0, revenue: 0, total: 0 };
-      const weekAgg = weeklyMap.get(weeklyKey) || { sold: 0, pending: 0, revenue: 0, total: 0 };
-      const status = proposal.status as ProposalStatus;
-      const isSold = status === "vendida";
-      const isPending = status === "pendente";
-      const isCanceled = status === "cancelada";
-      const stableReasonIndex = String(proposal.id).length % pendingReasons.length;
-      const pendingReason = isPending ? pendingReasons[stableReasonIndex] : "N/A";
-
-      const monthlyConversion = monthAgg.total ? (monthAgg.sold / monthAgg.total) * 100 : 0;
-      const weeklyConversion = weekAgg.total ? (weekAgg.sold / weekAgg.total) * 100 : 0;
-      const monthlyAvg = monthAgg.sold ? monthAgg.revenue / monthAgg.sold : 0;
-      const weeklyAvg = weekAgg.sold ? weekAgg.revenue / weekAgg.sold : 0;
-
-      return [
-        csvEscape(proposal.id),
-        csvEscape(proposal.title),
-        csvEscape(proposal.clientName),
-        csvEscape(status),
-        csvEscape(value.toFixed(2)),
-        csvEscape(createdAt.toISOString()),
-        csvEscape(year),
-        csvEscape(`T${Math.ceil(month / 3)}`),
-        csvEscape(month),
-        csvEscape(monthNames[createdAt.getMonth()]),
-        csvEscape(isoWeek),
-        csvEscape(monthlyKey),
-        csvEscape(weeklyKey),
-        csvEscape(isSold ? 1 : 0),
-        csvEscape(isPending ? 1 : 0),
-        csvEscape(isCanceled ? 1 : 0),
-        csvEscape(isSold ? value.toFixed(2) : "0.00"),
-        csvEscape(pendingReason),
-        csvEscape(daysBetween(proposal.createdAt)),
-        csvEscape(monthAgg.total),
-        csvEscape(monthAgg.sold),
-        csvEscape(monthAgg.pending),
-        csvEscape(monthAgg.revenue.toFixed(2)),
-        csvEscape(monthlyConversion.toFixed(2)),
-        csvEscape(monthlyAvg.toFixed(2)),
-        csvEscape(weekAgg.total),
-        csvEscape(weekAgg.sold),
-        csvEscape(weekAgg.pending),
-        csvEscape(weekAgg.revenue.toFixed(2)),
-        csvEscape(weeklyConversion.toFixed(2)),
-        csvEscape(weeklyAvg.toFixed(2)),
-        csvEscape(stats.soldCount),
-        csvEscape(stats.totalValue.toFixed(2)),
-        csvEscape(stats.pendingCount),
-        csvEscape(overallAvgTicket.toFixed(2)),
-        csvEscape(premium.health.score),
-        csvEscape(premium.pendingAgingAvg.toFixed(0)),
-      ];
-    });
-
-    const BOM = "\uFEFF";
-    const csvContent = BOM + headers.join(";") + "\n" + rows.map((row) => row.join(";")).join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `PowerBI_Vendas_Completo_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  };
 
     toast.success("Exportação gerada com sucesso!");
   };
