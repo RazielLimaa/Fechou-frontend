@@ -1,73 +1,19 @@
-# React + TypeScript + Vite
+### 🚀 Fechou!
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A **Fechou!** é o meu primeiro projeto SaaS. Ela nasceu de um problema real que eu vivi antes mesmo de virar desenvolvedor: quando eu trabalhava como fotógrafo, eu tinha dificuldade em **fechar contratos**. Os clientes pediam orçamento, demonstravam interesse, a conversa andava… e simplesmente não fechava. E o pior: eu não conseguia entender exatamente onde estava o erro.
 
-Currently, two official plugins are available:
+Não existia um processo claro, não existia organização, não existia acompanhamento. As propostas ficavam espalhadas, os valores não estavam claros e eu não tinha nenhuma visão real do que estava funcionando ou não. Foi desse problema que surgiu a ideia da Fechou!.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+A Fechou! foi pensada para **ajustar esse caos** e transformar interesse em contrato fechado. A ideia nunca foi só criar mais um sistema, mas sim construir uma ferramenta que ajudasse o usuário a **entender o próprio processo de venda** e ter controle sobre ele. Quando você entende seu processo, você fecha mais.
 
-## React Compiler
+O foco da Fechou! é organizar propostas, acompanhar contratos, controlar pagamentos e transformar tudo isso em métricas claras. Em vez de planilhas, contas manuais e suposições, a plataforma entrega números reais, visuais simples e informações que ajudam na tomada de decisão. A sensação que a Fechou! quer passar é a de progresso: ver contratos avançando, valores crescendo e o status mudando para “vendido”.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+A plataforma conta com um dashboard que mostra, de forma direta, quantos contratos estão pendentes, quantos foram fechados, quanto já foi faturado e quanto ainda está em aberto. Existe também uma visão premium, onde as métricas são calculadas diretamente no backend, garantindo dados consistentes e confiáveis, além de permitir a visualização mensal ou semanal e a exportação dos dados para CSV.
 
-## Expanding the ESLint configuration
+A Fechou! carrega valores muito claros desde o início. Clareza, para que o usuário bata o olho e entenda o que está acontecendo. Organização, para que nenhuma proposta se perca no meio do caminho. Confiança, porque dados errados quebram qualquer produto. E progresso, porque cada contrato fechado precisa gerar aquela sensação boa de “fechou”.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Esse projeto também representa meu processo de aprendizado. A Fechou! é o meu primeiro SaaS e funciona como um laboratório onde eu estou aprendendo, na prática, como estruturar um produto real. Com ela, estou trabalhando separação entre frontend e backend, consumo de APIs, regras de negócio, tipagem com TypeScript, integrações de pagamento e análise de métricas. Não é apenas código, é produto.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Atualmente, o projeto está em desenvolvimento ativo e evolui conforme meu aprendizado também evolui. A ideia é continuar melhorando a experiência do usuário, aprofundar as métricas, criar planos, automatizar acompanhamentos e deixar o produto cada vez mais próximo de algo que realmente poderia ser usado no dia a dia de quem vive de fechar contratos.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+A **Fechou!** não nasceu de uma ideia genérica. Ela nasceu de um problema real, vivido na prática. É o meu primeiro SaaS, meu projeto de portfólio e o início da minha jornada criando produtos que resolvem problemas de verdade.
