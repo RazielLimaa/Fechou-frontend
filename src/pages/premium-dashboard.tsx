@@ -32,6 +32,8 @@ import { usePlan } from "../hooks/use-plan";
 import { useQuery } from "@tanstack/react-query";
 import { exportPremiumDashboardCsv, getPremiumDashboard } from "../service/proposals";
 
+const COLORS = ["#FF6600", "#FF9933", "#FFCC66", "#CCCCCC"];
+
 // =====================
 // Types
 // =====================
@@ -59,12 +61,21 @@ export default function PremiumDashboard() {
     mercadoPagoService.connectOAuth();
   };
 
-  const { data: dashboard, isLoading: proposalsLoading } = useQuery({
+  const {
+    data: dashboard,
+    isLoading: dashboardLoading,
+    isError: dashboardError,
+    error,
+  } = useQuery({
     queryKey: ["premium-dashboard", viewMode],
     queryFn: () => getPremiumDashboard(viewMode),
   });
 
-  const proposals = (data ?? []) as Proposal[];
+  useEffect(() => {
+    if (dashboardError) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível carregar o dashboard premium.");
+    }
+  }, [dashboardError, error]);
 
   const stats = useMemo(() => {
     if (!dashboard) {
@@ -117,10 +128,7 @@ export default function PremiumDashboard() {
     toast.success("Exportação gerada com sucesso!");
   };
 
-  // =====================
-  // Guards
-  // =====================
-  if (planLoading || proposalsLoading) {
+  if (planLoading || dashboardLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-accent"></div>
