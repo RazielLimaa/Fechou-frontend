@@ -1,3 +1,5 @@
+import { getCsrfToken } from "../lib/security";
+
 export type ApiProposalStatus = "pendente" | "vendida" | "cancelada";
 
 export interface ApiProposal {
@@ -6,26 +8,36 @@ export interface ApiProposal {
   title: string;
   clientName: string;
   description: string;
-  value: string; // 
+  value: string;
   status: ApiProposalStatus;
   createdAt: string;
+
   contract?: {
     signed: boolean;
     signedAt: string | null;
     signerName: string | null;
     canPay: boolean;
   };
+
+  // quando vem do público (/public/:token)
+  pixKey?: string | null;
+  pixKeyType?: string | null;
 }
 
-import { getCsrfToken } from "../lib/security";
+const RAW_BASE = (import.meta as any)?.env?.VITE_API_URL ?? "http://localhost:3001";
+const API_BASE = String(RAW_BASE).trim().replace(/\/+$/, "");
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+function isLikelyJwt(token: string) {
+  if (!token) return false;
+  if (token.length < 10 || token.length > 4096) return false;
+  if (/[<>\s"']/.test(token)) return false;
+  return true;
+}
 
 function getToken(): string {
   const token = localStorage.getItem("access_token") ?? "";
-  // Basic token validation
-  if (token && (/<|>|javascript:/i.test(token) || token.length > 4096)) {
-    localStorage.removeItem("access_token");
+  if (!isLikelyJwt(token)) {
+    if (token) localStorage.removeItem("access_token");
     return "";
   }
   return token;
@@ -34,6 +46,7 @@ function getToken(): string {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method || "GET").toUpperCase();
   const csrfHeaders: Record<string, string> = {};
+
   if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
     csrfHeaders["X-CSRF-Token"] = getCsrfToken();
   }
@@ -48,6 +61,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       headers: {
         "Content-Type": "application/json",
         "X-Requested-With": "XMLHttpRequest",
+        "Cache-Control": "no-store",
+        Pragma: "no-cache",
         Authorization: `Bearer ${getToken()}`,
         ...csrfHeaders,
         ...(init?.headers ?? {}),
@@ -60,7 +75,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       localStorage.removeItem("access_token");
       localStorage.removeItem("user");
       window.location.href = "/login";
-      throw new Error("Sessao expirada.");
+      throw new Error("Sessão expirada.");
     }
 
     const text = await res.text();
@@ -74,7 +89,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (err) {
     clearTimeout(timeoutId);
     if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error("Tempo limite da requisicao excedido.");
+      throw new Error("Tempo limite da requisição excedido.");
     }
     throw err;
   }
@@ -96,10 +111,16 @@ export function createProposal(input: {
   });
 }
 
-export function generateShareLink(id: number, expiresInHours?: number): Promise<{ shareToken: string; expiresAt: string; path: string }> {
-  return apiFetch<{ shareToken: string; expiresAt: string; path: string }>(`/api/proposals/${id}/share-link`, {
+export function generateShareLink(
+  id: number,
+  expiresInHours?: number
+): Promise<{ shareToken: string; expiresAt: string; publicUrlPath: string }> {
+  return apiFetch<{ shareToken: string; expiresAt: string; publicUrlPath: string }>(`/api/proposals/${id}/share-link`, {
     method: "POST",
     body: JSON.stringify({ expiresInHours }),
+    headers: {
+      "Idempotency-Key": `share-link-${id}-${Date.now()}`,
+    },
   });
 }
 
@@ -107,26 +128,35 @@ export function getPublicProposal(token: string): Promise<ApiProposal> {
   return apiFetch<ApiProposal>(`/api/proposals/public/${token}`);
 }
 
-export function signProposal(token: string, data: { signerName: string; signerDocument: string }): Promise<{ message: string }> {
-  return apiFetch<{ message: string }>(`/api/proposals/public/${token}/sign`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
-export function createCheckout(token: string, data: { successUrl: string; failureUrl: string; pendingUrl: string; payerEmail?: string }): Promise<{ checkoutUrl: string; preferenceId: string }> {
-  return apiFetch<{ checkoutUrl: string; preferenceId: string }>(`/api/payments/public/${token}/checkout`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
-export function createSubscriptionCheckout(data: { priceId: string; successUrl: string; cancelUrl: string }) {
-  return apiFetch<{ checkoutUrl: string; sessionId: string }>("/api/subscriptions/checkout", {
+export function signProposal(
+  token: string,
+  data: { signerName: string; signerDocument: string }
+): Promise<{ ok: boolean; proposalId: number; signedAt: string | null }> {
+  return apiFetch<{ ok: boolean; proposalId: number; signedAt: string | null }>(`/api/proposals/public/${token}/sign`, {
     method: "POST",
     body: JSON.stringify(data),
     headers: {
-      "Idempotency-Key": `sub-checkout-${Date.now()}`
-    }
+      "Idempotency-Key": `public-sign-${Date.now()}`,
+    },
   });
+}
+
+/**
+ * ✅ CONFIRMAR PAGAMENTO MANUAL (PIX)
+ * POST /api/proposals/:id/mark-paid
+ */
+export function markProposalPaid(
+  id: number,
+  data?: { note?: string; payerName?: string; payerDocument?: string }
+): Promise<{ ok: boolean; proposalId: number; amountCents: number; externalPaymentId: string }> {
+  return apiFetch<{ ok: boolean; proposalId: number; amountCents: number; externalPaymentId: string }>(
+    `/api/proposals/${id}/mark-paid`,
+    {
+    method: "POST",
+      body: JSON.stringify(data ?? {}),
+    headers: {
+        "Idempotency-Key": `mark-paid-${id}-${Date.now()}`,
+      },
+    }
+  );
 }

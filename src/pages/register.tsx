@@ -191,7 +191,7 @@ export default function Register() {
 
             <div className="space-y-3 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
               <p className="text-sm text-muted-foreground">Sua senha deve conter:</p>
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                 <div className={`flex items-center gap-2 ${password.length >= 8 ? "text-green-500" : "text-muted-foreground"}`}>
                   <Check className="w-4 h-4" />
                   8+ caracteres
@@ -239,7 +239,7 @@ export default function Register() {
               </span>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-4">
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <motion.button
                 whileHover={{ scale: 1.02, borderColor: "rgba(255, 102, 0, 0.3)" }}
                 whileTap={{ scale: 0.98 }}
