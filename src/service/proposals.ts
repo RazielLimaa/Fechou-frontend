@@ -119,7 +119,12 @@ export function getPremiumDashboard(period: PremiumDashboardPeriod): Promise<Pre
   return apiFetch<PremiumDashboardResponse>(`/api/analytics/premium-dashboard?period=${period}`);
 }
 
-export async function exportPremiumDashboardCsv(): Promise<Blob> {
+export interface PremiumDashboardCsvExport {
+  blob: Blob;
+  fileName: string;
+}
+
+export async function exportPremiumDashboardCsv(): Promise<PremiumDashboardCsvExport> {
   const res = await fetch(`${API_BASE}/api/analytics/premium-dashboard/export.csv`, {
     method: "GET",
     headers: {
@@ -127,6 +132,13 @@ export async function exportPremiumDashboardCsv(): Promise<Blob> {
       "X-Requested-With": "XMLHttpRequest",
     },
   });
+
+  if (res.status === 401) {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+    window.location.href = "/login";
+    throw new Error("Sessao expirada.");
+  }
 
   if (!res.ok) {
     let message = `Erro ${res.status}`;
@@ -139,7 +151,11 @@ export async function exportPremiumDashboardCsv(): Promise<Blob> {
     throw new Error(message);
   }
 
-  return res.blob();
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const fileNameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  const fileName = fileNameMatch?.[1] || `PowerBI_Vendas_Completo_${new Date().toISOString().slice(0, 10)}.csv`;
+
+  return { blob: await res.blob(), fileName };
 }
 
 export function createProposal(input: {

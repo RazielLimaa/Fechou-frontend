@@ -110,11 +110,11 @@ export default function PremiumDashboard() {
 
   const exportToExcel = async () => {
     try {
-      const blob = await exportPremiumDashboardCsv();
+      const { blob, fileName } = await exportPremiumDashboardCsv();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `PowerBI_Vendas_Completo_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
