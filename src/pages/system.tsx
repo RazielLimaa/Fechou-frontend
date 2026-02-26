@@ -200,7 +200,7 @@ export default function System() {
           </motion.div>
 
           {/* PLANS */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-40">
+          <div className="grid grid-cols-1 lg:grid-cols-1 md:grid-cols-3 gap-8 mb-40">
             {plans.map((plan, i) => (
               <motion.div
                 key={plan.id}
@@ -305,7 +305,7 @@ export default function System() {
               Quem usa, <span className="text-accent">recomenda.</span>
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-3 gap-8">
               {testimonials.map((t, i) => (
                 <motion.div
                   key={i}

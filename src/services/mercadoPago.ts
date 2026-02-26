@@ -41,6 +41,7 @@ function normalizePixKeyPayload(payload: any): PixKeyResponse {
     source?.pixValue ??
     source?.pix_value ??
     null;
+
   const pixKeyType =
     source?.pixKeyType ??
     source?.pix_key_type ??
@@ -67,10 +68,15 @@ function normalizePixKeyPayload(payload: any): PixKeyResponse {
   };
 }
 
+/**
+ * ✅ Agora valida de verdade.
+ * - Se backend mandar hasPixKey=true, respeita.
+ * - Caso contrário, considera configurado se pixKey é string não vazia.
+ */
 export function isPixConfigured(data: PixKeyResponse | null | undefined): boolean {
   if (!data) return false;
   if (data.hasPixKey === true) return true;
-  return !!data.pixKey && data.pixKey.trim().length > 0;
+  return typeof data.pixKey === "string" && data.pixKey.trim().length > 0;
 }
 
 function normalizeStatusPayload(payload: any): MercadoPagoStatusResponse {
@@ -106,15 +112,22 @@ export const mercadoPagoService = {
     return normalizeStatusPayload(data);
   },
 
+  /**
+   * GET /api/user/pix-key
+   */
   getPixKey: async (): Promise<PixKeyResponse> => {
     const { data } = await api.get<PixKeyResponse>("/api/user/pix-key");
     return normalizePixKeyPayload(data);
   },
 
+  /**
+   * POST /api/user/pix-key
+   */
   savePixKey: async (pixKey: string, pixKeyType: string): Promise<PixKeyResponse> => {
     const { data } = await api.post<PixKeyResponse>("/api/user/pix-key", {
       pixKey,
       pixKeyType,
+      // aliases (não é obrigatório, mas deixei como você tinha)
       pix_key: pixKey,
       pix_key_type: pixKeyType,
       key: pixKey,
@@ -123,6 +136,9 @@ export const mercadoPagoService = {
     return normalizePixKeyPayload(data);
   },
 
+  /**
+   * DELETE /api/user/pix-key
+   */
   deletePixKey: async (): Promise<void> => {
     await api.delete("/api/user/pix-key");
   },
@@ -148,9 +164,8 @@ export const mercadoPagoService = {
    * (backend redireciona 302 para o OAuth do Mercado Pago)
    */
   connectOAuth: () => {
-    // Se o axios já está configurado com baseURL, isso também funcionaria com window.location = "/api/mercadopago/connect"
     const base = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
-    const origin = base || window.location.origin; // fallback bom pra dev
+    const origin = base || window.location.origin;
     window.location.href = `${origin}/api/mercadopago/connect`;
   },
 };

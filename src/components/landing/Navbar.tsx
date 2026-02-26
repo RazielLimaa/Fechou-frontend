@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "../../lib/utils";
 import { me, type AuthUser } from "../../service/api/auth";
+import { Menu, X } from "lucide-react";
 
 type AuthState =
   | { status: "guest"; user: null }
@@ -24,6 +25,7 @@ function readStoredAuth(): { token: string | null; user: AuthUser | null } {
 export default function Navbar() {
   const [, navigate] = useLocation();
   const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const [{ status, user }, setAuth] = useState<AuthState>(() => {
     const { token, user } = readStoredAuth();
@@ -35,6 +37,11 @@ export default function Navbar() {
     const handleScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false);
   }, []);
 
   // Keep navbar in sync with localStorage (other tabs + same tab manual edits)
@@ -92,8 +99,8 @@ export default function Navbar() {
   return (
     <nav
       className={cn(
-        "fixed top-0 left-0 right-0 z-50 px-6 py-4 md:py-8 transition-all duration-700",
-        scrolled ? "bg-background/20 backdrop-blur-2xl py-4" : "bg-transparent",
+        "fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-4 md:py-8 transition-all duration-700",
+        scrolled || mobileOpen ? "bg-background/20 backdrop-blur-2xl py-4" : "bg-transparent",
       )}
     >
       <div className="max-w-[1400px] mx-auto flex items-center justify-between">
@@ -101,7 +108,8 @@ export default function Navbar() {
           FECHOU<span className="text-accent group-hover:italic transition-all">!</span>
         </Link>
 
-        <div className="flex items-center gap-6 md:gap-12">
+        <div className="flex items-center gap-4 md:gap-6 lg:gap-12">
+          {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-10">
             <Link
               href="/vision"
@@ -130,7 +138,7 @@ export default function Navbar() {
             ) : (
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center text-[10px] font-bold">
+                  <div className="w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center text-[10px] font-bold shrink-0">
                     {initials || "U"}
                   </div>
                   <div className="leading-tight">
@@ -156,21 +164,109 @@ export default function Navbar() {
             )}
           </div>
 
-          {status === "guest" ? (
-            <Link href="/register">
-              <button className="px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500">
-                Comecar
-              </button>
-            </Link>
-          ) : (
-            <Link href="/propostas">
-              <button className="px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500">
-                Dashboard
-              </button>
-            </Link>
-          )}
+          {/* Desktop CTA */}
+          <div className="hidden md:block">
+            {status === "guest" ? (
+              <Link href="/register">
+                <button className="px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500">
+                  Comecar
+                </button>
+              </Link>
+            ) : (
+              <Link href="/propostas">
+                <button className="px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500">
+                  Dashboard
+                </button>
+              </Link>
+            )}
+          </div>
+
+          {/* Mobile hamburger */}
+          <button
+            type="button"
+            className="md:hidden p-2 text-muted-foreground hover:text-accent transition-colors"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label={mobileOpen ? "Fechar menu" : "Abrir menu"}
+          >
+            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
       </div>
+
+      {/* Mobile menu dropdown */}
+      {mobileOpen && (
+        <div className="md:hidden mt-4 pb-4 border-t border-white/10">
+          <div className="flex flex-col gap-4 pt-4">
+            <Link
+              href="/vision"
+              onClick={() => setMobileOpen(false)}
+              className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300"
+            >
+              Vision
+            </Link>
+
+            <Link
+              href="/system"
+              onClick={() => setMobileOpen(false)}
+              className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300"
+            >
+              fechado?!
+            </Link>
+
+            {status === "guest" ? (
+              <>
+                <Link
+                  href="/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300"
+                >
+                  Entrar
+                </Link>
+                <Link href="/register" onClick={() => setMobileOpen(false)}>
+                  <button className="w-full px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500">
+                    Comecar
+                  </button>
+                </Link>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center text-[10px] font-bold shrink-0">
+                    {initials || "U"}
+                  </div>
+                  <div className="leading-tight min-w-0">
+                    <div className="text-[11px] font-medium truncate">
+                      {user?.name ?? "Conta"}
+                      <span className="ml-2 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+                        {status === "loading" ? "..." : "Logado"}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground truncate">{user?.email}</div>
+                  </div>
+                </div>
+
+                <Link href="/propostas" onClick={() => setMobileOpen(false)}>
+                  <button className="w-full px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500">
+                    Dashboard
+                  </button>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleLogout();
+                    setMobileOpen(false);
+                  }}
+                  className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300 text-left"
+                  title="Sair"
+                >
+                  Sair
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

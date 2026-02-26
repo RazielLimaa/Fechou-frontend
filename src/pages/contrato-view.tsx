@@ -131,7 +131,7 @@ export default function ContratoView() {
           </section>
 
           <footer className="mt-24 pt-12 border-t border-gray-200">
-            <div className="grid grid-cols-2 gap-20">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-20">
               <div className="text-center">
                 <div className="border-b border-black mb-4"></div>
                 <p className="text-sm font-bold uppercase">Assinatura Contratante</p>

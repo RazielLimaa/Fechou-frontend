@@ -3,8 +3,17 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
+import { Menu, X } from "lucide-react";
+import { cn } from "../lib/utils";
 
-import { listProposals, generateShareLink, type ApiProposal, type ApiProposalStatus } from "../service/proposals";
+import {
+  listProposals,
+  generateShareLink,
+  markProposalPaid,
+  type ApiProposal,
+  type ApiProposalStatus,
+} from "../service/proposals";
+
 import { getMyPlan, type PlanId, confirmSubscriptionCheckout } from "../service/payment";
 import { mercadoPagoService, isPixConfigured } from "../services/mercadoPago";
 import { Button } from "../components/ui/button";
@@ -103,6 +112,8 @@ export default function Propostas() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("all");
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
   const [currentTip, setCurrentTip] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -151,14 +162,6 @@ export default function Propostas() {
     }
   }, [navigate]);
 
-  /**
-   * ✅ Pós-checkout Stripe (ROBUSTO):
-   * - espera /propostas?subscription=success&session_id=...
-   * - confirma no backend
-   * - atualiza o estado do plano imediatamente (pelo retorno do confirm)
-   * - limpa a URL
-   * - faz reload com retry pra garantir que /me já reflita a mudança
-   */
   useEffect(() => {
     const url = new URL(window.location.href);
     const ok = url.searchParams.get("subscription") === "success";
@@ -169,18 +172,14 @@ export default function Propostas() {
     (async () => {
       try {
         const confirmed = await confirmSubscriptionCheckout(sessionId);
-
-        // ✅ atualiza UI na hora
         setPlanId(confirmed.planId);
 
         toast.success(`Plano ativado! Você agora é ${planLabel(confirmed.planId)}.`);
 
-        // ✅ Limpa a URL para não reconfirmar ao atualizar
         url.searchParams.delete("subscription");
         url.searchParams.delete("session_id");
         window.history.replaceState({}, "", url.pathname + url.search);
 
-        // ✅ retry reload (backend pode demorar uns ms pra refletir)
         for (let i = 0; i < 5; i++) {
           await reload();
           await sleep(800);
@@ -194,7 +193,6 @@ export default function Propostas() {
     })();
   }, [reload]);
 
-  // Carrega normal ao montar
   useEffect(() => {
     reload();
   }, [reload]);
@@ -218,7 +216,9 @@ export default function Propostas() {
     const pending = proposals.filter((p) => p.status === "pending").length;
     const completed = proposals.filter((p) => p.status === "completed").length;
     const cancelled = proposals.filter((p) => p.status === "cancelled").length;
-    const totalRevenue = proposals.filter((p) => p.status === "completed").reduce((a, p) => a + p.value, 0);
+    const totalRevenue = proposals
+      .filter((p) => p.status === "completed")
+      .reduce((a, p) => a + p.value, 0);
     return { pending, completed, cancelled, totalRevenue };
   }, [proposals]);
 
@@ -226,6 +226,12 @@ export default function Propostas() {
     const denom = stats.completed + stats.cancelled;
     return denom === 0 ? 0 : Math.round((stats.completed / denom) * 100);
   }, [stats.completed, stats.cancelled]);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 50);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const chartData = useMemo(
     () => [
@@ -237,96 +243,192 @@ export default function Propostas() {
   );
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       <div className="noise-overlay" />
 
-      <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-6 bg-background/20 backdrop-blur-2xl border-b border-white/5">
+      <nav
+        className={cn(
+          "fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-4 md:py-8 transition-all duration-700",
+          scrolled || mobileMenuOpen ? "bg-background/20 backdrop-blur-2xl py-4" : "bg-transparent",
+        )}
+      >
         <div className="max-w-[1400px] mx-auto flex items-center justify-between">
           <Link href="/" className="font-display text-2xl font-bold tracking-tight group">
             FECHOU<span className="text-accent group-hover:italic transition-all">!</span>
           </Link>
 
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] uppercase tracking-[0.3em] text-foreground">Propostas</span>
+          <div className="flex items-center gap-4 md:gap-6 lg:gap-12">
+            {/* Desktop nav */}
+            <div className="hidden md:flex items-center gap-10">
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/propostas"
+                  className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300 relative group"
+                >
+                  Propostas
+                  <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-accent group-hover:w-full transition-all duration-300" />
+                </Link>
 
-              <span
-                className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] border ${
-                  planId === "premium"
-                    ? "border-yellow-500/30 text-yellow-300 bg-yellow-500/10"
-                    : planId === "pro"
+                <span
+                  className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] border ${
+                    planId === "premium"
+                      ? "border-yellow-500/30 text-yellow-300 bg-yellow-500/10"
+                      : planId === "pro"
                       ? "border-accent/40 text-accent bg-accent/10"
                       : "border-white/10 text-muted-foreground bg-white/5"
-                }`}
-                title="Seu plano atual"
+                  }`}
+                  title="Seu plano atual"
+                >
+                  {planLoading ? "..." : planLabel(planId)}
+                </span>
+              </div>
+
+              <Link
+                href="/templates"
+                className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300 relative group"
               >
-                {planLoading ? "..." : planLabel(planId)}
-              </span>
+                Templates
+                <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-accent group-hover:w-full transition-all duration-300" />
+              </Link>
+
+              <Link
+                href="/app/settings/payments"
+                className={cn(
+                  "text-[10px] uppercase tracking-[0.3em] font-medium transition-colors duration-300 relative group",
+                  !hasPixKey && !pixKeyLoading ? "text-red-400 hover:text-red-300" : "text-muted-foreground hover:text-accent"
+                )}
+                title={!hasPixKey ? "Cadastre sua chave PIX para receber pagamentos" : "Configurações de pagamento"}
+              >
+                {!hasPixKey && !pixKeyLoading && (
+                  <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                )}
+                Pagamentos
+                <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-accent group-hover:w-full transition-all duration-300" />
+              </Link>
+
+              <button
+                type="button"
+                onClick={reload}
+                className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300"
+                title="Atualizar lista"
+              >
+                Atualizar
+              </button>
             </div>
 
-            <Link
-              href="/templates"
-              className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground hover:text-accent transition-colors relative group"
-            >
-              Templates
-              <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-accent group-hover:w-full transition-all duration-300" />
-            </Link>
-
-            <Link
-              href="/app/settings/payments"
-              className={`text-[10px] uppercase tracking-[0.3em] transition-colors relative group ${
-                !hasPixKey && !pixKeyLoading
-                  ? "text-red-400 hover:text-red-300"
-                  : "text-muted-foreground hover:text-accent"
-              }`}
-              title={!hasPixKey ? "Cadastre sua chave PIX para receber pagamentos" : "Configuracoes de pagamento"}
-            >
-              {!hasPixKey && !pixKeyLoading && (
-                <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            {/* Desktop CTA */}
+            <div className="hidden md:block">
+              {hasPlan(planId, "pro") ? (
+                <Link href="/propostas/nova">
+                  <button className="px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500">
+                    Nova Proposta
+                  </button>
+                </Link>
+              ) : (
+                <button
+                  onClick={() => navigate("/system")}
+                  title="Disponivel a partir do Pro"
+                  className="px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500"
+                >
+                  Upgrade Pro
+                </button>
               )}
-              Pagamentos
-              <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-accent group-hover:w-full transition-all duration-300" />
-            </Link>
+            </div>
 
+            {/* Mobile hamburger */}
             <button
               type="button"
-              onClick={reload}
-              className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground hover:text-accent transition-colors"
-              title="Atualizar lista"
+              className="md:hidden p-2 text-muted-foreground hover:text-accent transition-colors"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? "Fechar menu" : "Abrir menu"}
             >
-              Atualizar
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
-
-          {hasPlan(planId, "pro") ? (
-            <Link href="/propostas/nova">
-              <motion.button whileHover={{ scale: 1.05, boxShadow: "0 0 40px rgba(255,102,0,0.3)" }} whileTap={{ scale: 0.95 }}>
-                <span className="px-6 py-3 rounded-full bg-accent text-white text-[10px] uppercase tracking-[0.2em] font-medium block">
-                  Nova Proposta
-                </span>
-              </motion.button>
-            </Link>
-          ) : (
-            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={() => navigate("/system")} title="Disponível a partir do Pro">
-              <span className="px-6 py-3 rounded-full border border-accent/30 bg-accent/10 text-accent text-[10px] uppercase tracking-[0.2em] font-medium block">
-                Upgrade Pro
-              </span>
-            </motion.button>
-          )}
         </div>
+
+        {/* Mobile menu dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden mt-4 pb-4 border-t border-white/10">
+            <div className="flex flex-col gap-4 pt-4">
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/propostas"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300"
+                >
+                  Propostas
+                </Link>
+                <span
+                  className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] border ${
+                    planId === "premium"
+                      ? "border-yellow-500/30 text-yellow-300 bg-yellow-500/10"
+                      : planId === "pro"
+                      ? "border-accent/40 text-accent bg-accent/10"
+                      : "border-white/10 text-muted-foreground bg-white/5"
+                  }`}
+                >
+                  {planLoading ? "..." : planLabel(planId)}
+                </span>
+              </div>
+
+              <Link
+                href="/templates"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300"
+              >
+                Templates
+              </Link>
+
+              <Link
+                href="/app/settings/payments"
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "text-[10px] uppercase tracking-[0.3em] font-medium transition-colors duration-300",
+                  !hasPixKey && !pixKeyLoading ? "text-red-400" : "text-muted-foreground hover:text-accent"
+                )}
+              >
+                Pagamentos
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => { reload(); setMobileMenuOpen(false); }}
+                className="text-[10px] uppercase tracking-[0.3em] font-medium text-muted-foreground hover:text-accent transition-colors duration-300 text-left"
+              >
+                Atualizar
+              </button>
+
+              {hasPlan(planId, "pro") ? (
+                <Link href="/propostas/nova" onClick={() => setMobileMenuOpen(false)}>
+                  <button className="w-full px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500">
+                    Nova Proposta
+                  </button>
+                </Link>
+              ) : (
+                <button
+                  onClick={() => { navigate("/system"); setMobileMenuOpen(false); }}
+                  className="w-full px-6 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] hover:bg-accent hover:border-accent hover:text-white hover:shadow-[0_0_30px_rgba(255,102,0,0.4)] transition-all duration-500 text-left"
+                >
+                  Upgrade Pro
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </nav>
 
-      <main className="pt-32 pb-20 px-6">
+      <main className="pt-24 sm:pt-32 pb-24 sm:pb-20 px-4 sm:px-6">
         <div className="max-w-[1400px] mx-auto">
           <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}>
-            <div className="mb-16">
+            <div className="mb-10 sm:mb-16">
               <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-4">Propostas</p>
-              <h1 className="font-display text-6xl md:text-8xl font-bold tracking-[-0.04em] text-reveal leading-[0.9]">
+              <h1 className="font-display text-4xl sm:text-6xl md:text-8xl font-bold tracking-[-0.04em] text-reveal leading-[0.9]">
                 Histórico<span className="text-accent">.</span>
               </h1>
             </div>
 
-            <div className="mb-10 rounded-3xl border border-white/5 bg-white/[0.02] p-6">
+            <div className="mb-10 rounded-2xl sm:rounded-3xl border border-white/5 bg-white/[0.02] p-4 sm:p-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-2">Seu plano</p>
@@ -337,27 +439,15 @@ export default function Propostas() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <span
-                    className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] border ${
-                      planId === "free" ? "border-white/20 text-foreground" : "border-white/10 text-muted-foreground"
-                    }`}
-                  >
+                  <span className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] border ${planId === "free" ? "border-white/20 text-foreground" : "border-white/10 text-muted-foreground"}`}>
                     Free
                   </span>
 
-                  <span
-                    className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] border ${
-                      hasPlan(planId, "pro") ? "border-accent/40 text-accent" : "border-white/10 text-muted-foreground"
-                    }`}
-                  >
+                  <span className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] border ${hasPlan(planId, "pro") ? "border-accent/40 text-accent" : "border-white/10 text-muted-foreground"}`}>
                     Pro
                   </span>
 
-                  <span
-                    className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] border ${
-                      hasPlan(planId, "premium") ? "border-yellow-500/30 text-yellow-300" : "border-white/10 text-muted-foreground"
-                    }`}
-                  >
+                  <span className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] border ${hasPlan(planId, "premium") ? "border-yellow-500/30 text-yellow-300" : "border-white/10 text-muted-foreground"}`}>
                     Premium
                   </span>
                 </div>
@@ -367,10 +457,10 @@ export default function Propostas() {
                 {planLoading
                   ? "Verificando seu plano..."
                   : planId === "free"
-                    ? "Você está no Free. Faça upgrade para liberar recursos avançados."
-                    : planId === "pro"
-                      ? "Você está no Pro. O Premium libera pagamentos + recursos completos."
-                      : "Você está no Premium. Acesso total liberado."}
+                  ? "Você está no Free. Faça upgrade para liberar recursos avançados."
+                  : planId === "pro"
+                  ? "Você está no Pro. O Premium libera pagamentos + recursos completos."
+                  : "Você está no Premium. Acesso total liberado."}
               </div>
 
               {!planLoading && planId !== "premium" && (
@@ -413,27 +503,27 @@ export default function Propostas() {
               <div className="py-20 text-center text-muted-foreground">Carregando propostas...</div>
             ) : (
               <>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-                  <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
+                <div className="grid grid-cols-1 gap-6 sm:gap-8 mb-12">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="p-4 sm:p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
                       <p className="text-[9px] uppercase tracking-[0.3em] text-yellow-400 mb-3">Pendentes</p>
-                      <p className="font-display text-4xl font-bold">{stats.pending}</p>
+                      <p className="font-display text-2xl sm:text-4xl font-bold">{stats.pending}</p>
                     </div>
 
-                    <div className="p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
+                    <div className="p-4 sm:p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
                       <p className="text-[9px] uppercase tracking-[0.3em] text-green-400 mb-3">Vendidos</p>
-                      <p className="font-display text-4xl font-bold">{stats.completed}</p>
+                      <p className="font-display text-2xl sm:text-4xl font-bold">{stats.completed}</p>
                     </div>
 
-                    <div className="p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
-                      <p className="text-[9px] uppercase tracking-[0.3em] text-red-400 mb-3">Não Vendidos</p>
-                      <p className="font-display text-4xl font-bold">{stats.cancelled}</p>
+                    <div className="p-4 sm:p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
+                      <p className="text-[9px] uppercase tracking-[0.3em] text-red-400 mb-3">{'Não Vendidos'}</p>
+                      <p className="font-display text-2xl sm:text-4xl font-bold">{stats.cancelled}</p>
                     </div>
 
-                    <div className="p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
+                    <div className="p-4 sm:p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
                       <p className="text-[9px] uppercase tracking-[0.3em] text-accent mb-3">Receita Total</p>
                       <p
-                        className="font-display text-3xl font-bold leading-none mt-1 text-accent cursor-pointer hover:underline"
+                        className="font-display text-xl sm:text-3xl font-bold leading-none mt-1 text-accent cursor-pointer hover:underline break-all"
                         onClick={() => {
                           if (planId === "premium") {
                             navigate("/dashboard/premium");
@@ -446,11 +536,11 @@ export default function Propostas() {
                       </p>
                     </div>
 
-                    <div className="col-span-2 md:col-span-4 p-8 rounded-3xl border border-white/5 bg-white/[0.02] flex flex-col md:flex-row items-center gap-8">
-                      <div className="w-full md:w-1/2 h-[200px]">
+                    <div className="col-span-2 md:col-span-4 p-5 sm:p-8 rounded-2xl sm:rounded-3xl border border-white/5 bg-white/[0.02] flex flex-col md:flex-row items-center gap-6 sm:gap-8">
+                      <div className="w-full md:w-1/2 h-[180px] sm:h-[200px]">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
-                            <Pie data={chartData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                            <Pie data={chartData} cx="50%" cy="50%" innerRadius={45} outerRadius={65} paddingAngle={5} dataKey="value">
                               {chartData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.color} />
                               ))}
@@ -468,8 +558,8 @@ export default function Propostas() {
                         </ResponsiveContainer>
                       </div>
 
-                      <div className="w-full md:w-1/2">
-                        <h3 className="font-display text-2xl font-bold mb-4">Análise de Conversão</h3>
+                      <div className="w-full md:w-1/2 text-center md:text-left">
+                        <h3 className="font-display text-xl sm:text-2xl font-bold mb-4">{'Análise de Conversão'}</h3>
                         <p className="text-sm text-muted-foreground mb-6">
                           Seu desempenho atual mostra que {conversionPct}% das suas propostas são convertidas em vendas.
                         </p>
@@ -478,7 +568,7 @@ export default function Propostas() {
                   </div>
 
                   {hasPlan(planId, "pro") ? (
-                    <div className="p-8 rounded-3xl border border-accent/20 bg-accent/5 relative overflow-hidden flex flex-col justify-between min-h-[300px]">
+                    <div className="p-5 sm:p-8 rounded-2xl sm:rounded-3xl border border-accent/20 bg-accent/5 relative overflow-hidden flex flex-col justify-between min-h-[250px] sm:min-h-[300px]">
                       <div>
                         <p className="text-[10px] uppercase tracking-[0.3em] text-accent font-bold mb-6">Dicas de Venda</p>
                         <AnimatePresence mode="wait">
@@ -499,11 +589,11 @@ export default function Propostas() {
                         onClick={() => setCurrentTip((prev) => (prev + 1) % salesTips.length)}
                         className="text-[10px] uppercase tracking-[0.2em] font-bold text-accent hover:opacity-70 transition-opacity self-end"
                       >
-                        Próxima Dica →
+                        Próxima Dica ���
                       </button>
                     </div>
                   ) : (
-                    <div className="p-8 rounded-3xl border border-white/10 bg-white/[0.02] flex flex-col justify-between min-h-[300px]">
+                    <div className="p-5 sm:p-8 rounded-2xl sm:rounded-3xl border border-white/10 bg-white/[0.02] flex flex-col justify-between min-h-[250px] sm:min-h-[300px]">
                       <div>
                         <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-6">Recurso Pro</p>
                         <h4 className="font-display text-2xl font-bold mb-3">Dicas de Venda</h4>
@@ -522,11 +612,11 @@ export default function Propostas() {
                   )}
                 </div>
 
-                <div className="flex gap-2 mb-8">
+                <div className="flex flex-wrap gap-2 mb-8">
                   {tabs.map((tab) => (
                     <motion.button key={tab.id} onClick={() => setActiveTab(tab.id)} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                       <span
-                        className={`px-5 py-2 rounded-full text-[10px] uppercase tracking-[0.2em] transition-all duration-300 block ${
+                        className={`px-4 sm:px-5 py-2 rounded-full text-[10px] uppercase tracking-[0.2em] transition-all duration-300 block ${
                           activeTab === tab.id ? "bg-foreground text-background" : "border border-white/10 text-muted-foreground hover:border-white/30"
                         }`}
                       >
@@ -548,70 +638,56 @@ export default function Propostas() {
                         transition={{ delay: 0.03 * i, duration: 0.4 }}
                         whileHover={{ x: 8, backgroundColor: "rgba(255,255,255,0.03)" }}
                         onClick={() => setSelectedProposal(proposal)}
-                        className="group flex items-center justify-between p-6 rounded-xl border border-transparent hover:border-white/5 transition-all duration-500 cursor-pointer"
+                        className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-6 rounded-xl border border-transparent hover:border-white/5 transition-all duration-500 cursor-pointer gap-3 sm:gap-0"
                       >
-                        <div className="flex items-center gap-8">
+                        <div className="flex items-center gap-4 sm:gap-8 min-w-0">
                           <div
-                            className={`w-1 h-12 rounded-full ${
+                            className={`w-1 h-8 sm:h-12 rounded-full shrink-0 ${
                               proposal.status === "pending"
                                 ? "bg-gradient-to-b from-yellow-400 to-yellow-600/20"
                                 : proposal.status === "completed"
-                                  ? "bg-gradient-to-b from-green-400 to-green-600/20"
-                                  : "bg-gradient-to-b from-red-400 to-red-600/20"
+                                ? "bg-gradient-to-b from-green-400 to-green-600/20"
+                                : "bg-gradient-to-b from-red-400 to-red-600/20"
                             }`}
                           />
 
-                          <div>
-                            <p className="font-medium mb-1">{proposal.title}</p>
-                            <p className="text-[11px] text-muted-foreground">
+                          <div className="min-w-0">
+                            <p className="font-medium mb-1 truncate">{proposal.title}</p>
+                            <p className="text-[11px] text-muted-foreground truncate">
                               {proposal.clientName} · {formatDate(proposal.createdAt)}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-8">
-                          <span className={`text-[9px] uppercase tracking-[0.2em] px-3 py-1 rounded-full border ${statusConfig[proposal.status].color}`}>
+                        <div className="flex items-center gap-3 sm:gap-8 pl-5 sm:pl-0">
+                          <span className={`text-[9px] uppercase tracking-[0.2em] px-3 py-1 rounded-full border shrink-0 ${statusConfig[proposal.status].color}`}>
                             {statusConfig[proposal.status].label}
                           </span>
 
-                          <p className="font-display text-xl font-semibold tracking-tight min-w-[140px] text-right">
+                          <p className="font-display text-base sm:text-xl font-semibold tracking-tight sm:min-w-[140px] text-right">
                             {formatCurrency(proposal.value)}
                           </p>
                         </div>
 
-                        <div className="flex gap-2 ml-4">
+                        <div className="flex flex-wrap gap-2 pl-5 sm:pl-0 sm:ml-4">
                           <button
                             onClick={async (e) => {
                               e.stopPropagation();
 
-                              // Block if PIX key is not registered
                               if (!hasPixKey) {
-                                toast.error(
-                                  "Cadastre sua chave PIX antes de compartilhar links de contrato.",
-                                  {
-                                    description: "Vá em Configurações de Pagamento para cadastrar sua chave PIX.",
-                                    action: {
-                                      label: "Configurar",
-                                      onClick: () => navigate("/app/settings/payments"),
-                                    },
-                                    duration: 6000,
-                                  }
-                                );
+                                toast.error("Cadastre sua chave PIX antes de compartilhar links de contrato.", {
+                                  description: "Vá em Configurações de Pagamento para cadastrar sua chave PIX.",
+                                  action: { label: "Configurar", onClick: () => navigate("/app/settings/payments") },
+                                  duration: 6000,
+                                });
                                 return;
                               }
 
                               try {
                                 const res = await generateShareLink(proposal.id);
-                                const url = `${window.location.origin}/c/${res.shareToken}`;
+                                const url = `${window.location.origin}${res.publicUrlPath}`;
                                 await navigator.clipboard.writeText(url);
                                 toast.success("Link copiado!");
-
-                                const notification = document.createElement("div");
-                                notification.className =
-                                  "fixed bottom-10 right-10 bg-accent text-white px-6 py-3 rounded-full shadow-2xl z-50 animate-bounce";
-                                notification.innerText = "Link do Contrato Copiado!";
-                                document.body.appendChild(notification);
-                                setTimeout(() => notification.remove(), 3000);
                               } catch {
                                 toast.error("Erro ao copiar link");
                               }
@@ -623,11 +699,36 @@ export default function Propostas() {
                             }`}
                             title={!hasPixKey ? "Cadastre sua chave PIX para copiar o link" : "Copiar link do contrato"}
                           >
-                            {!hasPixKey && (
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                            )}
                             Copiar Link
                           </button>
+
+                          {/* ✅ Confirmar pagamento (PIX manual) */}
+                          {proposal.status === "pending" && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+
+                                const ok = confirm(
+                                  `Confirmar pagamento manual via PIX?\n\nProposta: ${proposal.title}\nValor: ${formatCurrency(
+                                    proposal.value
+                                  )}\n\nIsso vai marcar como VENDIDA e atualizar seu dashboard.`
+                                );
+                                if (!ok) return;
+
+                                try {
+                                  await markProposalPaid(proposal.id, {});
+                                  toast.success("Pagamento confirmado! Proposta marcada como vendida.");
+                                  await reload();
+                                } catch (err: any) {
+                                  toast.error(err?.message ?? "Falha ao confirmar pagamento.");
+                                }
+                              }}
+                              className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] uppercase tracking-wider transition-all bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400"
+                              title="Confirmar pagamento manual (PIX)"
+                            >
+                              Confirmar Pagamento
+                            </button>
+                          )}
 
                           <Button
                             variant="outline"
@@ -646,11 +747,7 @@ export default function Propostas() {
                   </AnimatePresence>
 
                   {!filteredProposals.length && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="py-20 text-center text-muted-foreground border border-dashed border-white/10 rounded-3xl"
-                    >
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 sm:py-20 text-center text-muted-foreground border border-dashed border-white/10 rounded-2xl sm:rounded-3xl px-4">
                       Nenhuma proposta encontrada nesta categoria.
                     </motion.div>
                   )}
