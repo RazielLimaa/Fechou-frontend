@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "wouter";
 import { motion } from "framer-motion";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { proposalsService } from "../../services/proposals";
 import { mercadoPagoService } from "../../services/mercadoPago";
 import { Button } from "../../components/ui/button";
@@ -72,21 +72,35 @@ export default function ProposalDetails() {
     queryFn: mercadoPagoService.getStatus,
   });
 
-  const isPaymentConfigured = mpStatus?.connected === true;
+  const { data: pixData } = useQuery({
+    queryKey: ["pix-key"],
+    queryFn: mercadoPagoService.getPixKey,
+  });
+
+  const queryClient = useQueryClient();
+
+  // Simplified logic: Allow if Pix is present.
+  const isPaymentConfigured = !!(pixData?.pixKey);
 
   const shareMutation = useMutation({
     mutationFn: () => proposalsService.generateShareLink(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["proposal", id] });
+    },
     onError: (err: Error) => toast.error(err.message || "Erro ao gerar link do contrato."),
   });
 
   const paymentMutation = useMutation({
     mutationFn: () => proposalsService.generatePaymentLink(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["proposal", id] });
+    },
     onError: (err: Error) => toast.error(err.message || "Erro ao gerar link de pagamento."),
   });
 
   const handleShareClick = () => {
     if (!isPaymentConfigured) {
-      toast.error("Configure sua chave API do Mercado Pago antes de gerar links.", {
+      toast.error("Configure sua chave PIX nas configurações de pagamento antes de gerar links.", {
         action: {
           label: "Configurar",
           onClick: () => { window.location.href = "/app/settings/payments"; },
@@ -99,7 +113,7 @@ export default function ProposalDetails() {
 
   const handlePaymentClick = () => {
     if (!isPaymentConfigured) {
-      toast.error("Configure sua chave API do Mercado Pago antes de gerar links de pagamento.", {
+      toast.error("Configure sua chave PIX nas configurações de pagamento antes de gerar links.", {
         action: {
           label: "Configurar",
           onClick: () => { window.location.href = "/app/settings/payments"; },
@@ -208,7 +222,7 @@ export default function ProposalDetails() {
             </div>
 
             {/* Warning banner when not configured */}
-            {!isPaymentConfigured && mpStatus !== undefined && (
+            {!isPaymentConfigured && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -218,11 +232,11 @@ export default function ProposalDetails() {
                   <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-yellow-200">
-                      Pagamentos nao configurados
+                      Chave PIX nao configurada
                     </p>
                     <p className="text-xs text-yellow-300/70 mt-1">
-                      Cadastre sua chave API do Mercado Pago e sua chave PIX para habilitar
-                      a geracao de links de contrato e pagamento.
+                      Cadastre sua chave PIX para habilitar
+                      a geracao de links de contrato e recebimento direto.
                     </p>
                   </div>
                   <Link href="/app/settings/payments">
@@ -231,14 +245,14 @@ export default function ProposalDetails() {
                       className="bg-yellow-500/20 text-yellow-200 hover:bg-yellow-500/30 border border-yellow-500/30 rounded-xl gap-2 flex-shrink-0"
                     >
                       <Settings className="w-3.5 h-3.5" />
-                      Configurar
+                      Configurar PIX
                     </Button>
                   </Link>
                 </div>
               </motion.div>
             )}
 
-            <div className="grid md:grid-cols-2 gap-6 mb-8">
+            <div className="grid md:grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               {/* Details Card */}
               <Card className="border-white/5 bg-white/[0.02] backdrop-blur-xl">
                 <CardHeader className="border-b border-white/5">
@@ -306,7 +320,7 @@ export default function ProposalDetails() {
                       ) : (
                         <Link2 className="w-4 h-4" />
                       )}
-                      {isPaymentConfigured ? "Gerar Link do Contrato" : "Configure a API Key primeiro"}
+                      {isPaymentConfigured ? "Gerar Link do Contrato" : "Configure o PIX primeiro"}
                     </Button>
                     {shareMutation.data && <CopyLinkField value={shareMutation.data.shareLink} />}
                   </div>
@@ -339,7 +353,7 @@ export default function ProposalDetails() {
                       ) : (
                         <CreditCard className="w-4 h-4" />
                       )}
-                      {isPaymentConfigured ? "Gerar Link de Pagamento" : "Configure a API Key primeiro"}
+                      {isPaymentConfigured ? "Gerar Link de Pagamento" : "Configure o PIX primeiro"}
                     </Button>
                     {paymentMutation.data && (
                       <div className="mt-3 space-y-2">

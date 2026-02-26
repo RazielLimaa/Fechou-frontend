@@ -23,8 +23,6 @@ import ContratoView from "./pages/contrato-view";
 
 // New integrated pages
 import PaymentSettings from "./pages/app/PaymentSettings";
-import ProposalsList from "./pages/app/ProposalsList";
-import ProposalDetails from "./pages/app/ProposalDetails";
 import PublicContract from "./pages/public/PublicContract";
 import PaymentFeedback from "./pages/public/PaymentFeedback";
 
@@ -69,12 +67,6 @@ function Router() {
       <Route path="/app/settings/payments">
         <PrivateRoute component={PaymentSettings} />
       </Route>
-      <Route path="/app/proposals">
-        <PrivateRoute component={ProposalsList} />
-      </Route>
-      <Route path="/app/proposals/:id">
-        <PrivateRoute component={ProposalDetails} />
-      </Route>
 
       {/* Public contract & payment */}
       <Route path="/p/contract/:token" component={PublicContract} />
@@ -89,7 +81,11 @@ function Router() {
 function App() {
   // Security: prevent clickjacking on app load
   useEffect(() => {
-    preventClickjacking();
+    try {
+      preventClickjacking();
+    } catch (e) {
+      console.error("Failed to apply clickjacking protection", e);
+    }
   }, []);
 
   return (

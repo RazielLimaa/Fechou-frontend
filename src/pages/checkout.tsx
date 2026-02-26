@@ -85,7 +85,7 @@ export default function Checkout() {
             Finalizar <span className="text-accent">Pagamento.</span>
           </h1>
 
-          <div className="grid md:grid-cols-2 gap-12">
+          <div className="grid md:grid-cols-1 md:grid-cols-2 gap-12">
             {/* Resumo do Pedido */}
             <div className="space-y-6">
               <Card className="rounded-[2.5rem] border-white/5 bg-white/[0.02] backdrop-blur-xl border">
@@ -137,7 +137,7 @@ export default function Checkout() {
                         <Input id="card-number" placeholder="0000 0000 0000 0000" required className="bg-white/5 border-white/10 rounded-xl" />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="card-expiry" className="text-xs uppercase tracking-widest text-muted-foreground">Validade</Label>
                         <Input id="card-expiry" placeholder="MM/AA" required className="bg-white/5 border-white/10 rounded-xl" />

@@ -248,7 +248,7 @@ export default function NovaProposta() {
                   <p className="text-muted-foreground">Ou comece do zero com uma proposta em branco.</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-12">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
                   <motion.button
                     onClick={() => setSelectedTemplate("blank")}
                     whileHover={{ scale: 1.02, borderColor: "rgba(255,102,0,0.3)" }}
@@ -311,7 +311,7 @@ export default function NovaProposta() {
                 </div>
 
                 <div className="space-y-6 mb-12">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-[9px] uppercase tracking-[0.3em] text-muted-foreground mb-2 block">
                         Cliente
@@ -418,7 +418,7 @@ export default function NovaProposta() {
                 </div>
 
                 <div className="space-y-6 mb-12">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-[9px] uppercase tracking-[0.3em] text-muted-foreground mb-2 block">
                         Valor Total
