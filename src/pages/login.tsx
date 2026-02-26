@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight, Mail, Lock } from "lucide-react";
 import { login } from "../service/api/auth";
@@ -16,7 +16,13 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
 
   // Prevent clickjacking on mount
-  useState(() => { preventClickjacking(); });
+  useEffect(() => { 
+    try {
+      preventClickjacking(); 
+    } catch(e) {
+      console.error(e);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,7 +215,7 @@ export default function Login() {
               </span>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-4">
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <motion.button
                 whileHover={{ scale: 1.02, borderColor: "rgba(255, 102, 0, 0.3)" }}
                 whileTap={{ scale: 0.98 }}

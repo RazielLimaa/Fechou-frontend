@@ -23,7 +23,7 @@ export default function Footer() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
           <div className="space-y-4">
             <h4 className="text-sm font-medium text-foreground">Produto</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">

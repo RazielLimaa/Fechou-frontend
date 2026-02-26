@@ -112,7 +112,7 @@ export default function Vision() {
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-40">
+          <div className="grid grid-cols-1 lg:grid-cols-1 md:grid-cols-3 gap-8 mb-40">
             {pillars.map((pillar, i) => (
               <motion.div
                 key={i}

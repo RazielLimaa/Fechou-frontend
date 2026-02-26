@@ -35,7 +35,7 @@ export default function Process() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-24 relative">
+        <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-3 gap-24 relative">
           {steps.map((step, i) => (
             <motion.div
               key={i}
