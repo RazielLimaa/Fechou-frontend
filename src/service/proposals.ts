@@ -84,6 +84,49 @@ export function listProposals(): Promise<ApiProposal[]> {
   return apiFetch<ApiProposal[]>("/api/proposals");
 }
 
+export type PremiumDashboardPeriod = "monthly" | "weekly";
+
+export interface PremiumDashboardResponse {
+  period: PremiumDashboardPeriod;
+  generatedAt: string;
+  soldCount: number;
+  pendingCount: number;
+  canceledCount: number;
+  totalValue: number;
+  pendingValue: number;
+  avgTicket: number;
+  conversionRatePct: number;
+  chartData: Array<{ name: string; sold: number; pending: number; revenue: number }>;
+  pendingReasons: Array<{ name: string; value: number }>;
+}
+
+export function getPremiumDashboard(period: PremiumDashboardPeriod): Promise<PremiumDashboardResponse> {
+  return apiFetch<PremiumDashboardResponse>(`/api/analytics/premium-dashboard?period=${period}`);
+}
+
+export async function exportPremiumDashboardCsv(): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/api/analytics/premium-dashboard/export.csv`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      "X-Requested-With": "XMLHttpRequest",
+    },
+  });
+
+  if (!res.ok) {
+    let message = `Erro ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore and keep fallback message
+    }
+    throw new Error(message);
+  }
+
+  return res.blob();
+}
+
 export function createProposal(input: {
   title: string;
   clientName: string;
