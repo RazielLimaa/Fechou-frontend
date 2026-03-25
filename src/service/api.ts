@@ -1,4 +1,5 @@
-import { getCsrfToken } from "../lib/security";
+import { authStorage } from "../lib/auth-storage";
+import { getCsrfToken, setCsrfToken, clearCsrfToken } from "../lib/csrf";
 
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || window.location.origin;
 
@@ -35,18 +36,34 @@ function sanitizeToken(token: string): string | null {
   return trimmed;
 }
 
+function normalizeErrorMessage(status: number, fallback?: string): string {
+  if (status === 401) return "Sessão expirada. Faça login novamente.";
+  if (status === 403) return "Você não tem permissão para esta ação.";
+  if (status === 429) return "Muitas tentativas. Aguarde e tente novamente.";
+  if (status >= 500) return "Serviço temporariamente indisponível.";
+  return fallback && fallback.trim().length > 0 ? fallback : `Erro HTTP ${status}`;
+}
+
+function normalizeErrorByCode(code?: string): string | null {
+  if (!code) return null;
+  if (code === "STEP_UP_REQUIRED") return "Confirmação adicional necessária para continuar.";
+  if (code === "COOLDOWN_ACTIVE") return "Aguarde alguns instantes antes de tentar novamente.";
+  if (code === "SUSPICIOUS_ACTIVITY") return "Atividade incomum detectada. Tente novamente mais tarde.";
+  return null;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit & { json?: JsonBody; token?: string } = {},
 ): Promise<T> {
   const { json, token, headers, ...rest } = options;
 
-  // Resolve auth token: explicit param > localStorage
+  // Resolve auth token: explicit param > in-memory auth state
   let authToken: string | null = null;
   if (token) {
     authToken = sanitizeToken(token);
   } else {
-    const stored = localStorage.getItem("access_token");
+    const stored = authStorage.getAccessToken();
     if (stored) authToken = sanitizeToken(stored);
   }
 
@@ -54,7 +71,8 @@ export async function apiFetch<T>(
   const method = (rest.method || "GET").toUpperCase();
   const csrfHeaders: Record<string, string> = {};
   if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
-    csrfHeaders["X-CSRF-Token"] = getCsrfToken();
+    const csrfToken = await getCsrfToken(API_URL);
+    if (csrfToken) csrfHeaders["X-CSRF-Token"] = csrfToken;
   }
 
   const controller = new AbortController();
@@ -64,6 +82,7 @@ export async function apiFetch<T>(
     const res = await fetch(joinUrl(API_URL, path), {
       ...rest,
       signal: controller.signal,
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "X-Requested-With": "XMLHttpRequest",
@@ -77,11 +96,13 @@ export async function apiFetch<T>(
 
     clearTimeout(timeoutId);
 
+    const nextCsrf = res.headers.get("x-csrf-token");
+    if (nextCsrf) setCsrfToken(nextCsrf);
+
     // Handle auth failures securely
     if (res.status === 401) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("user");
-      sessionStorage.removeItem("_csrf_token");
+      authStorage.clearAll();
+      clearCsrfToken();
       window.location.href = "/login";
       throw new Error("Sessao expirada. Faca login novamente.");
     }
@@ -98,14 +119,20 @@ export async function apiFetch<T>(
       : await res.text().catch(() => null);
 
     if (!res.ok) {
-      const message =
+      const code =
+        data && typeof data === "object" && "code" in data && typeof (data as any).code === "string"
+          ? (data as any).code
+          : undefined;
+      const rawMessage =
         (data &&
           typeof data === "object" &&
           "message" in data &&
           typeof (data as any).message === "string" &&
           (data as any).message.trim().length > 0 &&
           (data as any).message) ||
-        (typeof data === "string" && data.trim().length > 0 ? data : `Erro HTTP ${res.status}`);
+        (typeof data === "string" && data.trim().length > 0 ? data : "");
+
+      const message = normalizeErrorByCode(code) ?? normalizeErrorMessage(res.status, rawMessage);
 
       throw new Error(message);
     }

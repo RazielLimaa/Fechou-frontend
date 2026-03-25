@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:security": "node scripts/security-audit-checks.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

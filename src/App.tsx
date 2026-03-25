@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { preventClickjacking } from "./lib/security";
+import { SessionProvider } from "./context/session-context";
 import AuthGuard from "./components/AuthGuard";
 import NotFound from "./pages/not-found";
 import Home from "./pages/home";
@@ -100,28 +101,28 @@ function App() {
   useEffect(() => {
     try {
       preventClickjacking();
-    } catch (e) {
-      console.error("Failed to apply clickjacking protection", e);
-    }
+    } catch {}
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Toaster
-            theme="dark"
-            position="top-right"
-            toastOptions={{
-              style: {
-                background: "hsl(240 10% 6%)",
-                border: "1px solid rgba(255, 255, 255, 0.08)",
-                color: "hsl(0 0% 98%)",
-              },
-            }}
-          />
-          <Router />
-        </WouterRouter>
+        <SessionProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Toaster
+              theme="dark"
+              position="top-right"
+              toastOptions={{
+                style: {
+                  background: "hsl(240 10% 6%)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  color: "hsl(0 0% 98%)",
+                },
+              }}
+            />
+            <Router />
+          </WouterRouter>
+        </SessionProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

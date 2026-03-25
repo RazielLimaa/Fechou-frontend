@@ -8,6 +8,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { toast } from "sonner";
+import { getSafeRedirectUrl } from "../../lib/security";
 import {
   ArrowLeft,
   Copy,
@@ -97,6 +98,10 @@ export default function ProposalDetails() {
     },
     onError: (err: Error) => toast.error(err.message || "Erro ao gerar link de pagamento."),
   });
+
+  const safePaymentUrl = paymentMutation.data?.paymentUrl
+    ? getSafeRedirectUrl(paymentMutation.data.paymentUrl)
+    : null;
 
   const handleShareClick = () => {
     if (!isPaymentConfigured) {
@@ -358,15 +363,19 @@ export default function ProposalDetails() {
                     {paymentMutation.data && (
                       <div className="mt-3 space-y-2">
                         <CopyLinkField value={paymentMutation.data.paymentUrl} />
-                        <a
-                          href={paymentMutation.data.paymentUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Abrir em nova aba
-                        </a>
+                        {safePaymentUrl ? (
+                          <a
+                            href={safePaymentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Abrir em nova aba
+                          </a>
+                        ) : (
+                          <p className="text-xs text-destructive">Link de pagamento inválido.</p>
+                        )}
                       </div>
                     )}
                   </div>

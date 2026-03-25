@@ -1,54 +1,83 @@
-import axios, { InternalAxiosRequestConfig, AxiosError } from 'axios';
-import { getCsrfToken } from '../lib/security';
+import axios, { type InternalAxiosRequestConfig, type AxiosError } from 'axios';
+import { authStorage } from '../lib/auth-storage';
+import { getCsrfToken, setCsrfToken, clearCsrfToken } from '../lib/csrf';
 
-// @ts-ignore
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const rawApiUrl = import.meta.env.VITE_API_URL;
+if (!rawApiUrl || String(rawApiUrl).trim().length === 0) {
+  throw new Error('VITE_API_URL ausente. Configure a URL da API antes de iniciar o app.');
+}
+
+const API_URL = String(rawApiUrl).trim();
 
 export const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest', // Prevent CSRF on older browsers
+    'X-Requested-With': 'XMLHttpRequest',
+    'Cache-Control': 'no-store',
+    Pragma: 'no-cache',
   },
-  timeout: 30000, // 30 second timeout to prevent hanging requests
-  withCredentials: false,
+  timeout: 30000,
+  withCredentials: true,
 });
 
-// Request interceptor: attach auth token + CSRF token
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = localStorage.getItem('access_token');
+api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+  const token = authStorage.getAccessToken();
   if (token && config.headers) {
-    // Validate token format before attaching
     if (token.trim().length > 0 && !token.includes('<') && !token.includes('>')) {
       config.headers.Authorization = `Bearer ${token}`;
     }
   }
 
-  // Attach CSRF token for state-changing requests
   if (config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {
-    config.headers['X-CSRF-Token'] = getCsrfToken();
+    const csrfToken = await getCsrfToken(API_URL);
+    if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
   }
 
   return config;
 });
 
-// Response interceptor: handle auth errors securely
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const nextCsrf = response.headers?.['x-csrf-token'];
+    if (typeof nextCsrf === 'string') setCsrfToken(nextCsrf);
+    return response;
+  },
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      sessionStorage.removeItem('_csrf_token');
+    const status = error.response?.status;
+    const code =
+      error.response?.data &&
+      typeof error.response.data === "object" &&
+      "code" in (error.response.data as Record<string, unknown>) &&
+      typeof (error.response.data as Record<string, unknown>).code === "string"
+        ? String((error.response.data as Record<string, unknown>).code)
+        : undefined;
+    if (status === 401) {
+      authStorage.clearAll();
+      clearCsrfToken();
       window.location.href = '/login';
     }
 
-    // Don't leak internal error details to console in production
-    if (error.response?.status === 403) {
-      console.warn('Acesso negado.');
+    if (code === "STEP_UP_REQUIRED") {
+      return Promise.reject(new Error('Confirmação adicional necessária para continuar.'));
+    }
+
+    if (code === "COOLDOWN_ACTIVE") {
+      return Promise.reject(new Error('Aguarde alguns instantes antes de tentar novamente.'));
+    }
+
+    if (code === "SUSPICIOUS_ACTIVITY") {
+      return Promise.reject(new Error('Atividade incomum detectada. Tente novamente mais tarde.'));
+    }
+
+    if (status === 429) {
+      return Promise.reject(new Error('Muitas tentativas. Aguarde e tente novamente.'));
+    }
+
+    if (status && status >= 500) {
+      return Promise.reject(new Error('Serviço temporariamente indisponível.'));
     }
 
     return Promise.reject(error);
   }
 );
-
