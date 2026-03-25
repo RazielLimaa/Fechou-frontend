@@ -302,6 +302,7 @@ function ActiveShape(props: any) {
   </g>);
 }
 
+
 // ─── UI Components ────────────────────────────────────────────────────────────
 function InfoBadge({text}:{text:string}) {
   return (

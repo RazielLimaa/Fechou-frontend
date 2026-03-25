@@ -185,7 +185,7 @@ export const mercadoPagoService = {
     // Bloqueia caracteres suspeitos (XSS / injection)
     if (/[<>"'`]/.test(clean))       throw new Error("Access token contém caracteres inválidos.");
 
-    const { data } = await api.post("/api/mercadopago/api-key/verify", { accessToken: clean });
+    const { data } = await api.post<VerifyApiKeyResponse>("/api/mercadopago/api-key/verify", { accessToken: clean });
     return data;
   },
 
@@ -198,7 +198,7 @@ export const mercadoPagoService = {
     if (clean.length > 512)          throw new Error("Access token muito longo.");
     if (/[<>"'`]/.test(clean))       throw new Error("Access token contém caracteres inválidos.");
 
-    const { data } = await api.post("/api/mercadopago/api-key/register", { accessToken: clean }, { stepUpToken });
+    const { data } = await api.post<RegisterApiKeyResponse>("/api/mercadopago/api-key/register", { accessToken: clean }, { stepUpToken });
     return data;
   },
 

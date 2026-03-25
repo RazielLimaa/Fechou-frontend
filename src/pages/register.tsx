@@ -77,9 +77,7 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      const r = await register(sanitizeInput(n), sanitizeInput(em), pwd);
-      authStorage.setAccessToken(r.token);
-      authStorage.setUserRaw(JSON.stringify(r.user));
+      await register(sanitizeInput(n), sanitizeInput(em), pwd);
       await refreshSession();
       navigate("/propostas");
     } catch (err: any) { setError(err?.message ?? "Falha ao criar conta."); }
