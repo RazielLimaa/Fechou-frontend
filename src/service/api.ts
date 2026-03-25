@@ -1,5 +1,5 @@
 import { authStorage } from "../lib/auth-storage";
-import { getCsrfToken } from "../lib/security";
+import { getCsrfToken, setCsrfToken, clearCsrfToken } from "../lib/csrf";
 
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || window.location.origin;
 
@@ -44,6 +44,14 @@ function normalizeErrorMessage(status: number, fallback?: string): string {
   return fallback && fallback.trim().length > 0 ? fallback : `Erro HTTP ${status}`;
 }
 
+function normalizeErrorByCode(code?: string): string | null {
+  if (!code) return null;
+  if (code === "STEP_UP_REQUIRED") return "Confirmação adicional necessária para continuar.";
+  if (code === "COOLDOWN_ACTIVE") return "Aguarde alguns instantes antes de tentar novamente.";
+  if (code === "SUSPICIOUS_ACTIVITY") return "Atividade incomum detectada. Tente novamente mais tarde.";
+  return null;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit & { json?: JsonBody; token?: string } = {},
@@ -63,7 +71,8 @@ export async function apiFetch<T>(
   const method = (rest.method || "GET").toUpperCase();
   const csrfHeaders: Record<string, string> = {};
   if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
-    csrfHeaders["X-CSRF-Token"] = getCsrfToken();
+    const csrfToken = await getCsrfToken(API_URL);
+    if (csrfToken) csrfHeaders["X-CSRF-Token"] = csrfToken;
   }
 
   const controller = new AbortController();
@@ -87,9 +96,13 @@ export async function apiFetch<T>(
 
     clearTimeout(timeoutId);
 
+    const nextCsrf = res.headers.get("x-csrf-token");
+    if (nextCsrf) setCsrfToken(nextCsrf);
+
     // Handle auth failures securely
     if (res.status === 401) {
       authStorage.clearAll();
+      clearCsrfToken();
       window.location.href = "/login";
       throw new Error("Sessao expirada. Faca login novamente.");
     }
@@ -106,6 +119,10 @@ export async function apiFetch<T>(
       : await res.text().catch(() => null);
 
     if (!res.ok) {
+      const code =
+        data && typeof data === "object" && "code" in data && typeof (data as any).code === "string"
+          ? (data as any).code
+          : undefined;
       const rawMessage =
         (data &&
           typeof data === "object" &&
@@ -115,7 +132,7 @@ export async function apiFetch<T>(
           (data as any).message) ||
         (typeof data === "string" && data.trim().length > 0 ? data : "");
 
-      const message = normalizeErrorMessage(res.status, rawMessage);
+      const message = normalizeErrorByCode(code) ?? normalizeErrorMessage(res.status, rawMessage);
 
       throw new Error(message);
     }

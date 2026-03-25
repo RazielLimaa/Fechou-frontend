@@ -19,8 +19,8 @@ export function sanitizeInput(input: string): string {
  * Validate that a string only contains safe characters (alphanumeric, spaces, common punctuation).
  */
 export function isSafeString(input: string): boolean {
-  // Allow letters, numbers, spaces, and common punctuation
-  return /^[\p{L}\p{N}\s.,!?@#$%&*()_+\-=\[\]{};':"\\|<>/~`]+$/u.test(input);
+  // Allow letters/numbers/spaces/common punctuation (ASCII + Latin-1 supplement)
+  return /^[A-Za-z0-9À-ÖØ-öø-ÿ\s.,!?@#$%&*()_+\-=\[\]{};':"\\|<>/~`]+$/.test(input);
 }
 
 /**
