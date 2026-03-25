@@ -3,6 +3,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight, Check } from "lucide-react";
 import { register } from "../service/api/auth";
+import { authStorage } from "../lib/auth-storage";
 import { rateLimiter, isValidEmail, sanitizeInput, isStrongPassword } from "../lib/security";
 import { useSession } from "../context/session-context";
 
