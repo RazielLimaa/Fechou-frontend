@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Navbar from "../components/landing/Navbar";
 import { createSubscriptionCheckout, confirmSubscription } from "../service/payment";
+import { getSafeRedirectUrl } from "../lib/security";
 
 // ─── Dados dos planos ─────────────────────────────────────────────────────────
 
@@ -120,7 +121,9 @@ export default function PlanCheckout() {
 
   try {
     const { checkoutUrl } = await createSubscriptionCheckout(planId, {});
-    window.location.href = checkoutUrl;
+    const safeUrl = getSafeRedirectUrl(checkoutUrl);
+    if (!safeUrl) throw new Error("URL de checkout inválida.");
+    window.location.href = safeUrl;
   } catch (err: any) {
     setError(err?.message ?? "Não foi possível iniciar o pagamento.");
     setPhase("error");

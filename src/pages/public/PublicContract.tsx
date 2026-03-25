@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { getSafeRedirectUrl } from "../../lib/security";
 import {
   CheckCircle, FileSignature, CreditCard, Loader2,
   Shield, User, Hash, Star, ArrowRight,
@@ -108,7 +109,14 @@ export default function PublicContract() {
         failureUrl:  `${window.location.origin}/p/feedback?status=failure`,
         pendingUrl:  `${window.location.origin}/p/feedback?status=pending`,
       }),
-    onSuccess: (data) => { window.location.href = data.checkoutUrl; },
+    onSuccess: (data) => {
+      const safeUrl = getSafeRedirectUrl(data.checkoutUrl);
+      if (!safeUrl) {
+        toast.error("Link de pagamento inválido.");
+        return;
+      }
+      window.location.href = safeUrl;
+    },
     onError: (err: Error) => { toast.error(err.message || "Erro ao iniciar pagamento."); },
   });
 

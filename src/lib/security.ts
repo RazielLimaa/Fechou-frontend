@@ -163,3 +163,17 @@ export function secureLogout(): void {
   // Clear all query caches
   window.location.href = "/login";
 }
+
+/**
+ * Validate and normalize redirect/payment URLs to avoid open-redirect and javascript: payloads.
+ */
+export function getSafeRedirectUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl, window.location.origin);
+    if (!["https:", "http:"].includes(parsed.protocol)) return null;
+    if (parsed.username || parsed.password) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}

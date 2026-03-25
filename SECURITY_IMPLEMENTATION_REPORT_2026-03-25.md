@@ -41,3 +41,9 @@
 - Assinatura obrigatória de webhooks com comparação timing-safe.
 - Autorização por ownership no backend para cada recurso.
 - Security headers finais por servidor/CDN (`HSTS`, `X-Content-Type-Options`, `X-Frame-Options`/`frame-ancestors`, CSP por header).
+
+## Verificação adicional (rodada final)
+
+- Mitigado risco de open redirect/client-side redirect inseguro em links de checkout/pagamento com validação de URL segura antes de navegação.
+- Eliminado `console.error` residual em fluxo OAuth de pagamento.
+- Mantidas mensagens neutras ao usuário em cenários de falha para reduzir vazamento de detalhes internos.
