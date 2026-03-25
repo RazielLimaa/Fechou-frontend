@@ -63,8 +63,8 @@ export function logout() {
   });
 }
 
-export function getCsrf() {
-  return apiFetch<CsrfResponse>(`${API_PREFIX}/csrf`, {
+export function me(token?: string) {
+  return apiFetch<AuthUser>(`${API_PREFIX}/me`, {
     method: "GET",
     skipAuthRefresh: true,
     skipCsrf: true,

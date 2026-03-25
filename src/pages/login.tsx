@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight } from "lucide-react";
 import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
-import { login, loginWithGoogle } from "../service/api/auth";
+import { login } from "../service/api/auth";
+import { authStorage } from "../lib/auth-storage";
 import { rateLimiter, isValidEmail, sanitizeInput, preventClickjacking } from "../lib/security";
 import { useSession } from "../context/session-context";
 
@@ -150,8 +151,27 @@ function LoginForm() {
       setError(null);
       setGoogleLoading(true);
       try {
-        const redirectUri = String(import.meta.env.VITE_GOOGLE_REDIRECT_URI ?? "").trim() || `${window.location.origin}/login`;
-        await loginWithGoogle(tokenResponse.code, redirectUri);
+        // Envia o authorization code para o backend concluir o fluxo com PKCE
+        const res = await fetch("/api/auth/google", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest", // proteção CSRF
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            code: tokenResponse.code,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.message ?? "Falha ao autenticar com Google.");
+        }
+
+        const r = await res.json();
+        authStorage.setAccessToken(r.token);
+        authStorage.setUserRaw(JSON.stringify(r.user));
         await refreshSession();
         navigate("/propostas");
       } catch (err: any) {
@@ -177,7 +197,9 @@ function LoginForm() {
     }
     setLoading(true);
     try {
-      await login(sanitizeInput(trimEmail), pwd);
+      const r = await login(sanitizeInput(trimEmail), pwd);
+      authStorage.setAccessToken(r.token);
+      authStorage.setUserRaw(JSON.stringify(r.user));
       await refreshSession();
       navigate("/propostas");
     } catch (err: any) { setError(err?.message ?? "Falha ao entrar."); }

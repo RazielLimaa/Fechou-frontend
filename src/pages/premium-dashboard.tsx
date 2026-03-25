@@ -1,7 +1,3 @@
-// src/pages/PremiumDashboard.tsx
-// Redesign Fechou! com Copiloto de Abordagem integrado ao novo motor.
-// Simulador de meta removido conforme solicitado.
-
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "../components/landing/Navbar";
@@ -305,7 +301,6 @@ function ActiveShape(props: any) {
     <Sector cx={cx} cy={cy} innerRadius={outerRadius+10} outerRadius={outerRadius+13} startAngle={startAngle} endAngle={endAngle} fill={fill}/>
   </g>);
 }
-
 
 // ─── UI Components ────────────────────────────────────────────────────────────
 function InfoBadge({text}:{text:string}) {

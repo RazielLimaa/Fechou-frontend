@@ -3,6 +3,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight, Check } from "lucide-react";
 import { register } from "../service/api/auth";
+import { authStorage } from "../lib/auth-storage";
 import { rateLimiter, isValidEmail, sanitizeInput, isStrongPassword } from "../lib/security";
 import { useSession } from "../context/session-context";
 
@@ -76,7 +77,9 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      await register(sanitizeInput(n), sanitizeInput(em), pwd);
+      const r = await register(sanitizeInput(n), sanitizeInput(em), pwd);
+      authStorage.setAccessToken(r.token);
+      authStorage.setUserRaw(JSON.stringify(r.user));
       await refreshSession();
       navigate("/propostas");
     } catch (err: any) { setError(err?.message ?? "Falha ao criar conta."); }
