@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import { authStorage } from "../lib/auth-storage";
 
 export type ContractStatus = "rascunho" | "finalizado" | "assinado" | "cancelado";
 export type PaymentForm = "pix" | "transferencia" | "boleto" | "cartao" | "outro";
@@ -173,7 +174,7 @@ export function renderContract(contractId: number): Promise<{ html: string }> {
 export async function uploadLogo(contractId: number, file: File): Promise<{ logoUrl: string }> {
   const formData = new FormData();
   formData.append("logo", file);
-  const token = localStorage.getItem("access_token") ?? "";
+  const token = authStorage.getAccessToken() ?? "";
   const res = await fetch(`${PREFIX}/${contractId}/logo`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
@@ -187,7 +188,7 @@ export async function uploadLogo(contractId: number, file: File): Promise<{ logo
 }
 
 export async function removeLogo(contractId: number): Promise<void> {
-  const token = localStorage.getItem("access_token") ?? "";
+  const token = authStorage.getAccessToken() ?? "";
   const res = await fetch(`${PREFIX}/${contractId}/logo`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
@@ -199,7 +200,7 @@ export async function removeLogo(contractId: number): Promise<void> {
 }
 
 export async function generatePdf(contractId: number): Promise<void> {
-  const token = localStorage.getItem("access_token") ?? "";
+  const token = authStorage.getAccessToken() ?? "";
   const res = await fetch(`${PREFIX}/${contractId}/pdf`, {
     method: "POST",
     headers: {
@@ -283,7 +284,7 @@ export async function updateLayout(
   contractId: number,
   layoutConfig: Record<string, unknown>
 ): Promise<void> {
-  const token = localStorage.getItem("access_token") ?? "";
+  const token = authStorage.getAccessToken() ?? "";
  
   const res = await fetch(`/api/contracts/${contractId}/layout`, {
     method: "PATCH",

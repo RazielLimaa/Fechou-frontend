@@ -1,3 +1,4 @@
+import { authStorage } from "./auth-storage";
 // ── Security utilities ──────────────────────────────────────────────
 
 /**
@@ -158,9 +159,21 @@ export function preventClickjacking(): void {
  * Clear all sensitive data from storage on logout.
  */
 export function secureLogout(): void {
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("user");
-  sessionStorage.removeItem("_csrf_token");
+  authStorage.clearAll();
   // Clear all query caches
   window.location.href = "/login";
+}
+
+/**
+ * Validate and normalize redirect/payment URLs to avoid open-redirect and javascript: payloads.
+ */
+export function getSafeRedirectUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl, window.location.origin);
+    if (!["https:", "http:"].includes(parsed.protocol)) return null;
+    if (parsed.username || parsed.password) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
