@@ -15,17 +15,42 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
-  
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+
   --font-display: "Syne", sans-serif;
   --font-body: "Manrope", sans-serif;
-  
+  --font-sans: "Manrope", sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+
   --radius-sm: 0.2rem;
   --radius-md: 0.4rem;
   --radius-lg: 0.6rem;
+  --radius: 0.5rem;
 }
 
 :root {
-  --background: 240 10% 2%; 
+  --background: 240 10% 2%;
   --foreground: 0 0% 98%;
 
   --primary: 0 0% 98%;
@@ -43,14 +68,36 @@
   --border: 240 4% 12%;
   --input: 240 4% 12%;
   --ring: 240 5% 84%;
-  
-  --radius: 0.5rem;
+
+  --card: 240 8% 5%;
+  --card-foreground: 0 0% 98%;
+
+  --popover: 240 8% 5%;
+  --popover-foreground: 0 0% 98%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+
+  --chart-1: 25 100% 50%;
+  --chart-2: 200 100% 50%;
+  --chart-3: 120 80% 50%;
+  --chart-4: 280 80% 60%;
+  --chart-5: 50 100% 50%;
+
+  --sidebar: 240 8% 4%;
+  --sidebar-foreground: 0 0% 85%;
+  --sidebar-border: 240 4% 12%;
+  --sidebar-ring: 240 5% 84%;
+  --sidebar-primary: 25 100% 50%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 240 4% 10%;
+  --sidebar-accent-foreground: 0 0% 98%;
 }
 
 body {
   font-family: var(--font-body);
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -90,4 +137,34 @@ body {
 .scroll-section {
   position: relative;
   z-index: 1;
+}
+
+.text-gradient {
+  background: linear-gradient(to right, #ffffff, #a1a1aa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }

@@ -1,6 +1,6 @@
 import { getCsrfToken } from "../lib/security";
 
-export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || window.location.origin;
 
 type JsonValue =
   | string
@@ -39,10 +39,6 @@ export async function apiFetch<T>(
   path: string,
   options: RequestInit & { json?: JsonBody; token?: string } = {},
 ): Promise<T> {
-  if (!API_URL) {
-    throw new Error("VITE_API_URL nao esta definido. Configure no .env e reinicie o dev server.");
-  }
-
   const { json, token, headers, ...rest } = options;
 
   // Resolve auth token: explicit param > localStorage

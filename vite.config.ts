@@ -6,12 +6,9 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 export default defineConfig({
   appType: "spa",
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    tailwindcss(),
-  ],
+  plugins: [react(), runtimeErrorOverlay(), tailwindcss()],
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "src"),
       "@shared": path.resolve(__dirname, "shared"),
@@ -21,6 +18,13 @@ export default defineConfig({
   server: {
     host: "localhost",
     port: 5173,
+    proxy: {
+      "/api": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   build: {
     outDir: "dist",

@@ -29,6 +29,12 @@ export interface RegisterApiKeyResponse {
   nickname: string | null;
 }
 
+function asTrimmedString(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s.length > 0 ? s : null;
+}
+
 function normalizePixKeyPayload(payload: any): PixKeyResponse {
   const source = payload?.data && typeof payload.data === "object" ? payload.data : payload;
 
@@ -58,12 +64,14 @@ function normalizePixKeyPayload(payload: any): PixKeyResponse {
     source?.configured ??
     source?.isConfigured;
 
-  const normalizedKey = typeof pixKey === "string" ? pixKey.trim() : "";
-  const hasPixKey = hasPixKeyRaw === true || normalizedKey.length > 0;
+  const normalizedKey = asTrimmedString(pixKey);
+  const normalizedType = asTrimmedString(pixKeyType);
+
+  const hasPixKey = hasPixKeyRaw === true || hasPixKeyRaw === "true" || hasPixKeyRaw === 1 || Boolean(normalizedKey);
 
   return {
-    pixKey: normalizedKey.length > 0 ? normalizedKey : null,
-    pixKeyType: typeof pixKeyType === "string" ? pixKeyType : null,
+    pixKey: normalizedKey,
+    pixKeyType: normalizedType,
     hasPixKey,
   };
 }
@@ -83,7 +91,11 @@ function normalizeStatusPayload(payload: any): MercadoPagoStatusResponse {
   const source = payload?.data && typeof payload.data === "object" ? payload.data : payload;
 
   const connectedRaw = source?.connected ?? source?.isConnected ?? source?.status;
-  const connected = connectedRaw === true || connectedRaw === "connected";
+  const connected =
+    connectedRaw === true ||
+    connectedRaw === "connected" ||
+    connectedRaw === "true" ||
+    connectedRaw === 1;
 
   const authMethodRaw = source?.authMethod ?? source?.auth_method ?? null;
   const authMethod = authMethodRaw === "oauth" || authMethodRaw === "api_key" ? authMethodRaw : null;
@@ -96,11 +108,24 @@ function normalizeStatusPayload(payload: any): MercadoPagoStatusResponse {
   return {
     connected,
     authMethod,
-    mpUserId: typeof mpUserIdRaw === "string" ? mpUserIdRaw : null,
-    expiresAt: typeof expiresAtRaw === "string" ? expiresAtRaw : null,
+    mpUserId: asTrimmedString(mpUserIdRaw),
+    expiresAt: asTrimmedString(expiresAtRaw),
     pixKey: pix.pixKey,
     pixKeyType: pix.pixKeyType,
   };
+}
+
+function buildApiOrigin(): string {
+  // Preferir backend explícito (dev/prod). Ex: https://api.seudominio.com
+  const envBase = String(import.meta.env.VITE_API_URL ?? "").trim();
+  const base = envBase.length > 0 ? envBase : window.location.origin;
+
+  // remove trailing slash
+  const cleaned = base.replace(/\/$/, "");
+
+  // Se o cara colocou VITE_API_URL já com /api no final, não duplica.
+  // Ex: https://meu-backend.com/api  -> origin final = https://meu-backend.com
+  return cleaned.endsWith("/api") ? cleaned.slice(0, -4) : cleaned;
 }
 
 export const mercadoPagoService = {
@@ -108,7 +133,7 @@ export const mercadoPagoService = {
    * GET /api/mercadopago/status
    */
   getStatus: async (): Promise<MercadoPagoStatusResponse> => {
-    const { data } = await api.get<MercadoPagoStatusResponse>("/api/mercadopago/status");
+    const { data } = await api.get("/api/mercadopago/status");
     return normalizeStatusPayload(data);
   },
 
@@ -116,7 +141,7 @@ export const mercadoPagoService = {
    * GET /api/user/pix-key
    */
   getPixKey: async (): Promise<PixKeyResponse> => {
-    const { data } = await api.get<PixKeyResponse>("/api/user/pix-key");
+    const { data } = await api.get("/api/user/pix-key");
     return normalizePixKeyPayload(data);
   },
 
@@ -124,14 +149,21 @@ export const mercadoPagoService = {
    * POST /api/user/pix-key
    */
   savePixKey: async (pixKey: string, pixKeyType: string): Promise<PixKeyResponse> => {
-    const { data } = await api.post<PixKeyResponse>("/api/user/pix-key", {
-      pixKey,
-      pixKeyType,
-      // aliases (não é obrigatório, mas deixei como você tinha)
-      pix_key: pixKey,
-      pix_key_type: pixKeyType,
-      key: pixKey,
-      type: pixKeyType,
+    // Sanitiza antes de enviar — remove espaços e limita tamanho
+    const cleanKey  = pixKey.trim().slice(0, 140);
+    const cleanType = pixKeyType.trim().slice(0, 20);
+
+    if (!cleanKey)  throw new Error("Chave PIX não pode ser vazia.");
+    if (!cleanType) throw new Error("Tipo da chave PIX não informado.");
+
+    const VALID_TYPES = ["cpf", "cnpj", "email", "phone", "random"];
+    if (!VALID_TYPES.includes(cleanType)) {
+      throw new Error(`Tipo de chave inválido: "${cleanType}".`);
+    }
+
+    const { data } = await api.post("/api/user/pix-key", {
+      pixKey:      cleanKey,
+      pixKeyType:  cleanType,
     });
     return normalizePixKeyPayload(data);
   },
@@ -147,7 +179,13 @@ export const mercadoPagoService = {
    * POST /api/mercadopago/api-key/verify
    */
   verifyApiKey: async (accessToken: string): Promise<VerifyApiKeyResponse> => {
-    const { data } = await api.post<VerifyApiKeyResponse>("/api/mercadopago/api-key/verify", { accessToken });
+    const clean = accessToken.trim();
+    if (!clean || clean.length < 20) throw new Error("Access token inválido.");
+    if (clean.length > 512)          throw new Error("Access token muito longo.");
+    // Bloqueia caracteres suspeitos (XSS / injection)
+    if (/[<>"'`]/.test(clean))       throw new Error("Access token contém caracteres inválidos.");
+
+    const { data } = await api.post("/api/mercadopago/api-key/verify", { accessToken: clean });
     return data;
   },
 
@@ -155,7 +193,12 @@ export const mercadoPagoService = {
    * POST /api/mercadopago/api-key/register
    */
   registerApiKey: async (accessToken: string): Promise<RegisterApiKeyResponse> => {
-    const { data } = await api.post<RegisterApiKeyResponse>("/api/mercadopago/api-key/register", { accessToken });
+    const clean = accessToken.trim();
+    if (!clean || clean.length < 20) throw new Error("Access token inválido.");
+    if (clean.length > 512)          throw new Error("Access token muito longo.");
+    if (/[<>"'`]/.test(clean))       throw new Error("Access token contém caracteres inválidos.");
+
+    const { data } = await api.post("/api/mercadopago/api-key/register", { accessToken: clean });
     return data;
   },
 
@@ -164,8 +207,20 @@ export const mercadoPagoService = {
    * (backend redireciona 302 para o OAuth do Mercado Pago)
    */
   connectOAuth: () => {
-    const base = String(import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
-    const origin = base || window.location.origin;
-    window.location.href = `${origin}/api/mercadopago/connect`;
+    const origin = buildApiOrigin();
+
+    // Garante que só redireciona para domínios conhecidos (evita open redirect)
+    try {
+      const parsed = new URL(`${origin}/api/mercadopago/connect`);
+      const allowed = ["localhost", ...(import.meta.env.VITE_API_URL ? [new URL(import.meta.env.VITE_API_URL).hostname] : [])];
+      if (!allowed.some(h => parsed.hostname === h || parsed.hostname.endsWith(`.${h}`))) {
+        // Em produção, só bloqueia se não for o próprio domínio
+        const isHttps = parsed.protocol === "https:";
+        if (!isHttps) throw new Error("Domínio não autorizado para OAuth.");
+      }
+      window.location.href = parsed.toString();
+    } catch (err) {
+      console.error("connectOAuth: URL inválida", err);
+    }
   },
 };
