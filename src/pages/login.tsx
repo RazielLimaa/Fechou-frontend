@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight } from "lucide-react";
 import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
 import { login } from "../service/api/auth";
+import { authStorage } from "../lib/auth-storage";
 import { rateLimiter, isValidEmail, sanitizeInput, preventClickjacking } from "../lib/security";
 
 const GOOGLE_CLIENT_ID =
@@ -138,18 +139,17 @@ function LoginForm() {
 
   useEffect(() => { try { preventClickjacking(); } catch {} }, []);
 
-  // ── flow: "implicit" — retorna access_token direto, sem redirect_uri ──────
-  // Elimina o redirect_uri_mismatch de vez: o Google entrega o token
-  // diretamente no popup, sem precisar de callback no backend.
+  // ── fluxo OAuth moderno: Authorization Code + PKCE ───────────────────────
+  // O frontend recebe apenas `code` e o backend faz a troca segura por tokens.
   const googleLogin = useGoogleLogin({
-    flow: "implicit",
+    flow: "auth-code",
     scope: "openid email profile",
 
     onSuccess: async (tokenResponse) => {
       setError(null);
       setGoogleLoading(true);
       try {
-        // Envia o access_token para o backend verificar com a API do Google
+        // Envia o authorization code para o backend concluir o fluxo com PKCE
         const res = await fetch("/api/auth/google", {
           method: "POST",
           headers: {
@@ -158,7 +158,7 @@ function LoginForm() {
           },
           credentials: "include",
           body: JSON.stringify({
-            access_token: tokenResponse.access_token,
+            code: tokenResponse.code,
           }),
         });
 
@@ -168,8 +168,8 @@ function LoginForm() {
         }
 
         const r = await res.json();
-        localStorage.setItem("access_token", r.token);
-        localStorage.setItem("user", JSON.stringify(r.user));
+        authStorage.setAccessToken(r.token);
+        authStorage.setUserRaw(JSON.stringify(r.user));
         navigate("/propostas");
       } catch (err: any) {
         setError(err?.message ?? "Falha ao entrar com Google.");
@@ -179,7 +179,6 @@ function LoginForm() {
     },
 
     onError: (err) => {
-      console.error("[GoogleLogin] onError:", err);
       setError("Login com Google cancelado ou falhou. Tente novamente.");
     },
   });
@@ -196,8 +195,8 @@ function LoginForm() {
     setLoading(true);
     try {
       const r = await login(sanitizeInput(trimEmail), pwd);
-      localStorage.setItem("access_token", r.token);
-      localStorage.setItem("user", JSON.stringify(r.user));
+      authStorage.setAccessToken(r.token);
+      authStorage.setUserRaw(JSON.stringify(r.user));
       navigate("/propostas");
     } catch (err: any) { setError(err?.message ?? "Falha ao entrar."); }
     finally { setLoading(false); }

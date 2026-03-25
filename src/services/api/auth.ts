@@ -1,3 +1,4 @@
+import { authStorage } from "../../lib/auth-storage";
 import { api } from "./index";
 
 export interface AuthUser {
@@ -30,6 +31,5 @@ export async function me(token: string): Promise<AuthUser> {
 }
 
 export function logout() {
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("user");
+  authStorage.clearAll();
 }
