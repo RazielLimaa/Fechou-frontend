@@ -376,6 +376,15 @@ function AppearancePanel({ layout, onChange, planId, contractId }: AppearancePan
 
   const set = (patch: Partial<LayoutCustomization>) => onChange({ ...layout, ...patch });
 
+  const hasValidImageSignature = async (file: File): Promise<boolean> => {
+    const buf = await file.slice(0, 12).arrayBuffer();
+    const b = new Uint8Array(buf);
+    const isPng = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+    const isJpeg = b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+    const isWebp = b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50;
+    return isPng || isJpeg || isWebp;
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) {
@@ -391,6 +400,11 @@ function AppearancePanel({ layout, onChange, planId, contractId }: AppearancePan
     }
     if (file.size > MAX_MB * 1024 * 1024) {
       toast.error(`Arquivo muito grande. Limite: ${MAX_MB} MB.`);
+      setInputKey(prev => prev + 1);
+      return;
+    }
+    if (!(await hasValidImageSignature(file))) {
+      toast.error("Arquivo inválido. Envie uma imagem JPEG, PNG ou WebP válida.");
       setInputKey(prev => prev + 1);
       return;
     }

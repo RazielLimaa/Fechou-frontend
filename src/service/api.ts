@@ -36,6 +36,14 @@ function sanitizeToken(token: string): string | null {
   return trimmed;
 }
 
+function normalizeErrorMessage(status: number, fallback?: string): string {
+  if (status === 401) return "Sessão expirada. Faça login novamente.";
+  if (status === 403) return "Você não tem permissão para esta ação.";
+  if (status === 429) return "Muitas tentativas. Aguarde e tente novamente.";
+  if (status >= 500) return "Serviço temporariamente indisponível.";
+  return fallback && fallback.trim().length > 0 ? fallback : `Erro HTTP ${status}`;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit & { json?: JsonBody; token?: string } = {},
@@ -98,14 +106,16 @@ export async function apiFetch<T>(
       : await res.text().catch(() => null);
 
     if (!res.ok) {
-      const message =
+      const rawMessage =
         (data &&
           typeof data === "object" &&
           "message" in data &&
           typeof (data as any).message === "string" &&
           (data as any).message.trim().length > 0 &&
           (data as any).message) ||
-        (typeof data === "string" && data.trim().length > 0 ? data : `Erro HTTP ${res.status}`);
+        (typeof data === "string" && data.trim().length > 0 ? data : "");
+
+      const message = normalizeErrorMessage(res.status, rawMessage);
 
       throw new Error(message);
     }

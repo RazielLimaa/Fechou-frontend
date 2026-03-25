@@ -6,6 +6,7 @@ import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
 import { login } from "../service/api/auth";
 import { authStorage } from "../lib/auth-storage";
 import { rateLimiter, isValidEmail, sanitizeInput, preventClickjacking } from "../lib/security";
+import { useSession } from "../context/session-context";
 
 const GOOGLE_CLIENT_ID =
   "773668316637-ajvug1pnn2flcjv0gl3f1sc4rsnfth54.apps.googleusercontent.com";
@@ -129,6 +130,7 @@ function Field({
 // ── Formulário principal ──────────────────────────────────────────────────────
 function LoginForm() {
   const [, navigate] = useLocation();
+  const { refreshSession } = useSession();
   const [showPwd, setShowPwd]             = useState(false);
   const [email, setEmail]                 = useState("");
   const [pwd, setPwd]                     = useState("");
@@ -170,6 +172,7 @@ function LoginForm() {
         const r = await res.json();
         authStorage.setAccessToken(r.token);
         authStorage.setUserRaw(JSON.stringify(r.user));
+        await refreshSession();
         navigate("/propostas");
       } catch (err: any) {
         setError(err?.message ?? "Falha ao entrar com Google.");
@@ -197,6 +200,7 @@ function LoginForm() {
       const r = await login(sanitizeInput(trimEmail), pwd);
       authStorage.setAccessToken(r.token);
       authStorage.setUserRaw(JSON.stringify(r.user));
+      await refreshSession();
       navigate("/propostas");
     } catch (err: any) { setError(err?.message ?? "Falha ao entrar."); }
     finally { setLoading(false); }

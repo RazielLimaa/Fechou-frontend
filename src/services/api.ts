@@ -39,9 +39,18 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    if (status === 401) {
       authStorage.clearAll();
       window.location.href = '/login';
+    }
+
+    if (status === 429) {
+      return Promise.reject(new Error('Muitas tentativas. Aguarde e tente novamente.'));
+    }
+
+    if (status && status >= 500) {
+      return Promise.reject(new Error('Serviço temporariamente indisponível.'));
     }
 
     return Promise.reject(error);
