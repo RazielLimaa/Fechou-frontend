@@ -1,8 +1,8 @@
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { QueryClient, type QueryFunction } from "@tanstack/react-query";
+import { authStorage } from "./auth-storage";
 
 function getAuthToken(): string | null {
-  // <-- ESSE é o nome que seu Login salva
-  return localStorage.getItem("access_token");
+  return authStorage.getAccessToken();
 }
 
 function buildHeaders(hasJsonBody: boolean): HeadersInit {
@@ -10,6 +10,8 @@ function buildHeaders(hasJsonBody: boolean): HeadersInit {
 
   const headers: Record<string, string> = {
     Accept: "application/json",
+    "Cache-Control": "no-store",
+    Pragma: "no-cache",
   };
 
   if (hasJsonBody) headers["Content-Type"] = "application/json";
@@ -25,18 +27,14 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
-export async function apiRequest(
-  method: string,
-  url: string,
-  data?: unknown | undefined
-): Promise<Response> {
+export async function apiRequest(method: string, url: string, data?: unknown | undefined): Promise<Response> {
   const hasBody = data !== undefined;
 
   const res = await fetch(url, {
     method,
     headers: buildHeaders(hasBody),
     body: hasBody ? JSON.stringify(data) : undefined,
-    credentials: "include", // pode manter
+    credentials: "include",
   });
 
   await throwIfResNotOk(res);
@@ -45,9 +43,7 @@ export async function apiRequest(
 
 type UnauthorizedBehavior = "returnNull" | "throw";
 
-export const getQueryFn: <T>(options: {
-  on401: UnauthorizedBehavior;
-}) => QueryFunction<T> =
+export const getQueryFn: <T>(options: { on401: UnauthorizedBehavior }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const res = await fetch(queryKey.join("/") as string, {

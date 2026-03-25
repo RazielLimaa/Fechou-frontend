@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
+import { authStorage } from "../lib/auth-storage";
 import {
   ShieldCheck, Lock, ArrowLeft, Crown, Briefcase,
   CheckCircle2, AlertCircle, Loader2, ExternalLink,
@@ -52,7 +53,7 @@ type PlanKey = keyof typeof PLAN_MAP;
 
 function isLoggedIn(): boolean {
   try {
-    const token = localStorage.getItem("access_token");
+    const token = authStorage.getAccessToken();
     if (!token || token.trim().length === 0) return false;
     // Valida formato básico de JWT sem expor conteúdo
     const parts = token.split(".");

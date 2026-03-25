@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { me, type AuthUser } from "../../service/api/auth";
 import { motion, AnimatePresence } from "framer-motion";
+import { authStorage } from "../../lib/auth-storage";
 
 type AuthState =
   | { status: "guest"; user: null }
@@ -9,8 +10,8 @@ type AuthState =
   | { status: "authed"; user: AuthUser };
 
 function readStoredAuth(): { token: string | null; user: AuthUser | null } {
-  const token = localStorage.getItem("access_token");
-  const rawUser = localStorage.getItem("user");
+  const token = authStorage.getAccessToken();
+  const rawUser = authStorage.getUserRaw();
   if (!token || !rawUser) return { token: null, user: null };
   try { return { token, user: JSON.parse(rawUser) as AuthUser }; }
   catch { return { token, user: null }; }
@@ -76,8 +77,8 @@ export default function Navbar() {
     if (!token) return;
     setAuth({ status: "loading", user: user ?? null });
     me(token)
-      .then((u) => { localStorage.setItem("user", JSON.stringify(u)); setAuth({ status: "authed", user: u }); })
-      .catch(() => { localStorage.removeItem("access_token"); localStorage.removeItem("user"); setAuth({ status: "guest", user: null }); });
+      .then((u) => { authStorage.setUserRaw(JSON.stringify(u)); setAuth({ status: "authed", user: u }); })
+      .catch(() => { authStorage.clearAll(); setAuth({ status: "guest", user: null }); });
   }, []);
 
   // click fora fecha user menu
@@ -96,8 +97,7 @@ export default function Navbar() {
   }, [user]);
 
   const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
+    authStorage.clearAll();
     setAuth({ status: "guest", user: null });
     navigate("/login");
   };

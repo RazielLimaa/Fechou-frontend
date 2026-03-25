@@ -1,3 +1,4 @@
+import { authStorage } from "../lib/auth-storage";
 import { getCsrfToken } from "../lib/security";
 
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || window.location.origin;
@@ -41,12 +42,12 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { json, token, headers, ...rest } = options;
 
-  // Resolve auth token: explicit param > localStorage
+  // Resolve auth token: explicit param > in-memory auth state
   let authToken: string | null = null;
   if (token) {
     authToken = sanitizeToken(token);
   } else {
-    const stored = localStorage.getItem("access_token");
+    const stored = authStorage.getAccessToken();
     if (stored) authToken = sanitizeToken(stored);
   }
 
@@ -64,6 +65,7 @@ export async function apiFetch<T>(
     const res = await fetch(joinUrl(API_URL, path), {
       ...rest,
       signal: controller.signal,
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "X-Requested-With": "XMLHttpRequest",
@@ -79,9 +81,7 @@ export async function apiFetch<T>(
 
     // Handle auth failures securely
     if (res.status === 401) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("user");
-      sessionStorage.removeItem("_csrf_token");
+      authStorage.clearAll();
       window.location.href = "/login";
       throw new Error("Sessao expirada. Faca login novamente.");
     }
