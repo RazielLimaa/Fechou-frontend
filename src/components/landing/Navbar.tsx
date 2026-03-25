@@ -1,20 +1,13 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { me, type AuthUser } from "../../service/api/auth";
+import { type AuthUser } from "../../service/api/auth";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSession } from "../../context/session-context";
 
 type AuthState =
   | { status: "guest"; user: null }
   | { status: "loading"; user: AuthUser | null }
   | { status: "authed"; user: AuthUser };
-
-function readStoredAuth(): { token: string | null; user: AuthUser | null } {
-  const token = localStorage.getItem("access_token");
-  const rawUser = localStorage.getItem("user");
-  if (!token || !rawUser) return { token: null, user: null };
-  try { return { token, user: JSON.parse(rawUser) as AuthUser }; }
-  catch { return { token, user: null }; }
-}
 
 // altura da navbar — usada como CSS var para spacer e menu offset
 const NAV_H = 58;
@@ -27,10 +20,8 @@ export default function Navbar() {
   const [isMobile, setIsMobile] = useState<boolean | undefined>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const [{ status, user }, setAuth] = useState<AuthState>(() => {
-    const { token, user } = readStoredAuth();
-    return token && user ? { status: "authed", user } : { status: "guest", user: null };
-  });
+  const { status: sessionStatus, user: sessionUser, clearSession } = useSession();
+  const [{ status, user }, setAuth] = useState<AuthState>({ status: "loading", user: null });
 
   // scroll listener
   useEffect(() => {
@@ -56,29 +47,17 @@ export default function Navbar() {
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
 
-  // sync auth entre abas
   useEffect(() => {
-    const sync = () => {
-      const { token, user } = readStoredAuth();
-      if (token && user) setAuth({ status: "authed", user });
-      else setAuth({ status: "guest", user: null });
-    };
-    const handler = (e: StorageEvent) => {
-      if (e.key === "access_token" || e.key === "user") sync();
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, []);
-
-  // valida token com backend
-  useEffect(() => {
-    const { token, user } = readStoredAuth();
-    if (!token) return;
-    setAuth({ status: "loading", user: user ?? null });
-    me(token)
-      .then((u) => { localStorage.setItem("user", JSON.stringify(u)); setAuth({ status: "authed", user: u }); })
-      .catch(() => { localStorage.removeItem("access_token"); localStorage.removeItem("user"); setAuth({ status: "guest", user: null }); });
-  }, []);
+    if (sessionStatus === "loading") {
+      setAuth({ status: "loading", user: null });
+      return;
+    }
+    if (sessionStatus === "authenticated" && sessionUser) {
+      setAuth({ status: "authed", user: sessionUser });
+      return;
+    }
+    setAuth({ status: "guest", user: null });
+  }, [sessionStatus, sessionUser]);
 
   // click fora fecha user menu
   useEffect(() => {
@@ -96,8 +75,7 @@ export default function Navbar() {
   }, [user]);
 
   const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
+    clearSession();
     setAuth({ status: "guest", user: null });
     navigate("/login");
   };

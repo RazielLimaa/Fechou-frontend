@@ -4,6 +4,7 @@ import Navbar from "../components/landing/Navbar";
 import Footer from "../components/landing/Footer";
 import { Check, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
+import { authStorage } from "../lib/auth-storage";
 
 // ── dados ─────────────────────────────────────────────────────────────────────
 const PLANS = [
@@ -62,7 +63,7 @@ function R({ children, delay = 0 }: { children: React.ReactNode; delay?: number 
 }
 
 function isLoggedIn() {
-  const token = localStorage.getItem("access_token");
+  const token = authStorage.getAccessToken();
   return Boolean(token && token.trim().length > 0);
 }
 
