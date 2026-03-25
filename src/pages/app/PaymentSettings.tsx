@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { mercadoPagoService, isPixConfigured } from "../../services/mercadoPago";
+import { runWithStepUp } from "../../service/step-up";
+import { toUiErrorMessage } from "../../lib/api-error";
 import type {
   MercadoPagoStatusResponse,
   VerifyApiKeyResponse,
@@ -187,7 +189,8 @@ export default function PaymentSettingsPage() {
   const hasPixKey = isPixConfigured(pixData);
 
   const savePixMutation = useMutation({
-    mutationFn: ({ key, type }: { key: string; type: string }) => mercadoPagoService.savePixKey(key, type),
+    mutationFn: ({ key, type }: { key: string; type: string }) =>
+      runWithStepUp("user.pix.update", { keyType: type }, (stepUpToken) => mercadoPagoService.savePixKey(key, type, stepUpToken)),
     onSuccess: (savedPix) => {
       queryClient.setQueryData(["pix-key"], savedPix);
       queryClient.invalidateQueries({ queryKey: ["pix-key"] });
@@ -195,21 +198,21 @@ export default function PaymentSettingsPage() {
       setIsEditingPix(false);
       toast.success("Chave PIX cadastrada com sucesso!");
     },
-    onError: (err: any) => {
-      toast.error(err?.message ?? "Erro ao salvar chave PIX.");
+    onError: (err: unknown) => {
+      toast.error(toUiErrorMessage(err));
     },
   });
 
   const deletePixMutation = useMutation({
-    mutationFn: () => mercadoPagoService.deletePixKey(),
+    mutationFn: () => runWithStepUp("user.pix.delete", undefined, (stepUpToken) => mercadoPagoService.deletePixKey(stepUpToken)),
     onSuccess: () => {
       queryClient.setQueryData(["pix-key"], { pixKey: null, pixKeyType: null });
       queryClient.invalidateQueries({ queryKey: ["pix-key"] });
       setIsEditingPix(false);
       toast.success("Chave PIX removida.");
     },
-    onError: (err: any) => {
-      toast.error(err?.message ?? "Erro ao remover chave PIX.");
+    onError: (err: unknown) => {
+      toast.error(toUiErrorMessage(err));
     },
   });
 

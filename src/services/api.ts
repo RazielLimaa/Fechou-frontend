@@ -1,54 +1,50 @@
-import axios, { InternalAxiosRequestConfig, AxiosError } from 'axios';
-import { getCsrfToken } from '../lib/security';
+import { apiFetch, type ApiFetchOptions, ApiError } from "../service/api";
 
-// @ts-ignore
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+type ReqConfig = {
+  headers?: Record<string, string>;
+  stepUpToken?: string;
+  timeoutMs?: number;
+};
 
-export const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest', // Prevent CSRF on older browsers
+type Resp<T> = { data: T };
+
+async function request<T>(
+  method: string,
+  path: string,
+  payload?: unknown,
+  config?: ReqConfig,
+): Promise<Resp<T>> {
+  const data = await apiFetch<T>(path, {
+    method,
+    headers: config?.headers,
+    stepUpToken: config?.stepUpToken,
+    timeoutMs: config?.timeoutMs,
+    ...(payload !== undefined ? { json: payload as ApiFetchOptions["json"] } : {}),
+  });
+
+  return { data };
+}
+
+export const api = {
+  get<T>(path: string, config?: ReqConfig) {
+    return request<T>("GET", path, undefined, config);
   },
-  timeout: 30000, // 30 second timeout to prevent hanging requests
-  withCredentials: false,
-});
 
-// Request interceptor: attach auth token + CSRF token
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = localStorage.getItem('access_token');
-  if (token && config.headers) {
-    // Validate token format before attaching
-    if (token.trim().length > 0 && !token.includes('<') && !token.includes('>')) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
+  post<T>(path: string, payload?: unknown, config?: ReqConfig) {
+    return request<T>("POST", path, payload, config);
+  },
 
-  // Attach CSRF token for state-changing requests
-  if (config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {
-    config.headers['X-CSRF-Token'] = getCsrfToken();
-  }
+  put<T>(path: string, payload?: unknown, config?: ReqConfig) {
+    return request<T>("PUT", path, payload, config);
+  },
 
-  return config;
-});
+  patch<T>(path: string, payload?: unknown, config?: ReqConfig) {
+    return request<T>("PATCH", path, payload, config);
+  },
 
-// Response interceptor: handle auth errors securely
-api.interceptors.response.use(
-  (response) => response,
-  (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      sessionStorage.removeItem('_csrf_token');
-      window.location.href = '/login';
-    }
+  delete<T>(path: string, config?: ReqConfig) {
+    return request<T>("DELETE", path, undefined, config);
+  },
+};
 
-    // Don't leak internal error details to console in production
-    if (error.response?.status === 403) {
-      console.warn('Acesso negado.');
-    }
-
-    return Promise.reject(error);
-  }
-);
-
+export { ApiError };
