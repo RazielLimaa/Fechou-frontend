@@ -1,4 +1,5 @@
 import React from "react";
+import { authStorage } from "../lib/auth-storage";
 // src/pages/Propostas.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -33,6 +34,8 @@ import {
 } from "../service/contracts";
 
 import { getMyPlan, type PlanId, confirmSubscriptionCheckout } from "../service/payment";
+import { runWithStepUp } from "../service/step-up";
+import { toUiErrorMessage } from "../lib/api-error";
 import { mercadoPagoService, isPixConfigured } from "../services/mercadoPago";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -175,7 +178,7 @@ export default function Propostas() {
   const [pixKeyLoading, setPixKeyLoading]   = useState(true);
 
   const reload = useCallback(async () => {
-    const token = localStorage.getItem("access_token");
+    const token = authStorage.getAccessToken();
     if (!token) { navigate("/login"); return; }
     setIsLoading(true); setPlanLoading(true); setError(null);
     try {
@@ -309,12 +312,15 @@ export default function Propostas() {
     const key = `${item.source}-${item.id}-paid`;
     setLoadingAction(key);
     try {
-      if (item.source === "contract") await markContractPaid(item.id, {});
-      else await markProposalPaid(item.id, {});
+      if (item.source === "contract") {
+        await runWithStepUp("contracts.mark-paid", { contractId: item.id }, (stepUpToken) => markContractPaid(item.id, {}, stepUpToken));
+      } else {
+        await runWithStepUp("payments.mark-paid", { proposalId: item.id }, (stepUpToken) => markProposalPaid(item.id, {}, stepUpToken));
+      }
       toast.success("Pagamento confirmado!");
       await reload();
-    } catch (err: any) {
-      toast.error(err?.message ?? "Falha ao confirmar.");
+    } catch (err: unknown) {
+      toast.error(toUiErrorMessage(err));
     } finally { setLoadingAction(null); }
   }, [reload]);
 

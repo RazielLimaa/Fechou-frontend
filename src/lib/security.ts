@@ -1,3 +1,4 @@
+import { authStorage } from "./auth-storage";
 // ── Security utilities ──────────────────────────────────────────────
 
 /**
@@ -18,8 +19,8 @@ export function sanitizeInput(input: string): string {
  * Validate that a string only contains safe characters (alphanumeric, spaces, common punctuation).
  */
 export function isSafeString(input: string): boolean {
-  // Allow letters, numbers, spaces, and common punctuation
-  return /^[\p{L}\p{N}\s.,!?@#$%&*()_+\-=\[\]{};':"\\|<>/~`]+$/u.test(input);
+  // Allow letters/numbers/spaces/common punctuation (ASCII + Latin-1 supplement)
+  return /^[A-Za-z0-9À-ÖØ-öø-ÿ\s.,!?@#$%&*()_+\-=\[\]{};':"\\|<>/~`]+$/.test(input);
 }
 
 /**
@@ -158,9 +159,21 @@ export function preventClickjacking(): void {
  * Clear all sensitive data from storage on logout.
  */
 export function secureLogout(): void {
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("user");
-  sessionStorage.removeItem("_csrf_token");
+  authStorage.clearAll();
   // Clear all query caches
   window.location.href = "/login";
+}
+
+/**
+ * Validate and normalize redirect/payment URLs to avoid open-redirect and javascript: payloads.
+ */
+export function getSafeRedirectUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl, window.location.origin);
+    if (!["https:", "http:"].includes(parsed.protocol)) return null;
+    if (parsed.username || parsed.password) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }

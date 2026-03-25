@@ -148,7 +148,7 @@ export const mercadoPagoService = {
   /**
    * POST /api/user/pix-key
    */
-  savePixKey: async (pixKey: string, pixKeyType: string): Promise<PixKeyResponse> => {
+  savePixKey: async (pixKey: string, pixKeyType: string, stepUpToken?: string): Promise<PixKeyResponse> => {
     // Sanitiza antes de enviar — remove espaços e limita tamanho
     const cleanKey  = pixKey.trim().slice(0, 140);
     const cleanType = pixKeyType.trim().slice(0, 20);
@@ -164,15 +164,15 @@ export const mercadoPagoService = {
     const { data } = await api.post("/api/user/pix-key", {
       pixKey:      cleanKey,
       pixKeyType:  cleanType,
-    });
+    }, { stepUpToken });
     return normalizePixKeyPayload(data);
   },
 
   /**
    * DELETE /api/user/pix-key
    */
-  deletePixKey: async (): Promise<void> => {
-    await api.delete("/api/user/pix-key");
+  deletePixKey: async (stepUpToken?: string): Promise<void> => {
+    await api.delete("/api/user/pix-key", { stepUpToken });
   },
 
   /**
@@ -185,20 +185,20 @@ export const mercadoPagoService = {
     // Bloqueia caracteres suspeitos (XSS / injection)
     if (/[<>"'`]/.test(clean))       throw new Error("Access token contém caracteres inválidos.");
 
-    const { data } = await api.post("/api/mercadopago/api-key/verify", { accessToken: clean });
+    const { data } = await api.post<VerifyApiKeyResponse>("/api/mercadopago/api-key/verify", { accessToken: clean });
     return data;
   },
 
   /**
    * POST /api/mercadopago/api-key/register
    */
-  registerApiKey: async (accessToken: string): Promise<RegisterApiKeyResponse> => {
+  registerApiKey: async (accessToken: string, stepUpToken?: string): Promise<RegisterApiKeyResponse> => {
     const clean = accessToken.trim();
     if (!clean || clean.length < 20) throw new Error("Access token inválido.");
     if (clean.length > 512)          throw new Error("Access token muito longo.");
     if (/[<>"'`]/.test(clean))       throw new Error("Access token contém caracteres inválidos.");
 
-    const { data } = await api.post("/api/mercadopago/api-key/register", { accessToken: clean });
+    const { data } = await api.post<RegisterApiKeyResponse>("/api/mercadopago/api-key/register", { accessToken: clean }, { stepUpToken });
     return data;
   },
 
@@ -220,7 +220,7 @@ export const mercadoPagoService = {
       }
       window.location.href = parsed.toString();
     } catch (err) {
-      console.error("connectOAuth: URL inválida", err);
+      throw new Error("Não foi possível iniciar a conexão OAuth.");
     }
   },
 };
