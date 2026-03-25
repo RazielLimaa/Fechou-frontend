@@ -1,7 +1,3 @@
-// src/pages/PremiumDashboard.tsx
-// Redesign Fechou! com Copiloto de Abordagem integrado ao novo motor.
-// Simulador de meta removido conforme solicitado.
-
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "../components/landing/Navbar";

@@ -61,15 +61,16 @@ export function getProposalById(id: number): Promise<ApiProposal> {
   return apiFetch<ApiProposal>(`/api/proposals/${safeId(id)}`);
 }
 
-export function createProposal(input: {
+
+export function createProposal(...args: [input: {
   title: string;
   clientName: string;
   description: string;
   value: number;
-}): Promise<ApiProposal> {
+}]): Promise<ApiProposal> {
   return apiFetch<ApiProposal>("/api/proposals", {
     method: "POST",
-    json: input,
+    body: JSON.stringify(oninput),
   });
 }
 
@@ -77,9 +78,9 @@ export function generateShareLink(
   id: number,
   expiresInHours?: number,
 ): Promise<{ shareToken: string; expiresAt: string; publicUrlPath: string }> {
-  return apiFetch(`/api/proposals/${safeId(id)}/share-link`, {
+  return apiFetch<{ shareToken: string; expiresAt: string; publicUrlPath: string }>(`/api/proposals/${id}/share-link`, {
     method: "POST",
-    json: { expiresInHours },
+    body: JSON.stringify({ expiresInHours }),
     headers: {
       "Idempotency-Key": `share-link-${id}-${Date.now()}`,
     },
@@ -87,7 +88,7 @@ export function generateShareLink(
 }
 
 export function getPublicProposal(token: string): Promise<ApiProposal> {
-  return apiFetch<ApiProposal>(`/api/proposals/public/${safePublicToken(token)}`);
+  return apiFetch<ApiProposal>(`/api/proposals/public/${token}`);
 }
 
 export function signProposal(token: string, data: SignProposalPayload): Promise<SignProposalResponse> {
@@ -97,17 +98,17 @@ export function signProposal(token: string, data: SignProposalPayload): Promise<
 
   return apiFetch<SignProposalResponse>(`/api/proposals/public/${safePublicToken(token)}/sign`, {
     method: "POST",
-    json: {
-      signerName,
-      signerDocument,
-      signatureDataUrl,
-    },
+    body: JSON.stringify(data),
     headers: {
       "Idempotency-Key": `public-sign-${Date.now()}`,
     },
   });
 }
 
+/**
+ * ✅ CONFIRMAR PAGAMENTO MANUAL (PIX)
+ * POST /api/proposals/:id/mark-paid
+ */
 export function markProposalPaid(
   id: number,
   data?: { note?: string; payerName?: string; payerDocument?: string },
