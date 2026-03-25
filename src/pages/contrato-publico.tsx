@@ -7,6 +7,11 @@ import { Input } from "../components/ui/input";
 import { toast } from "sonner";
 import { rateLimiter, sanitizeInput } from "../lib/security";
 import {
+  normalizeSignerDocument,
+  validateSignatureDataUrl,
+  validateSignerName,
+} from "../lib/signature-security";
+import {
   CheckCircle2, Pen, Copy, ArrowRight, FileText, Calendar,
   DollarSign, User, Eraser, Shield, Clock, AlertCircle,
   ChevronDown, Lock, Banknote, Star, ExternalLink,
@@ -369,17 +374,20 @@ export default function ContratoPublico() {
     e.preventDefault();
     if (!token || !proposal) return;
     if (proposal.contract?.signed) { toast.error("Este contrato já foi assinado."); return; }
-    const trimmedName = signerName.trim();
-    const trimmedDoc = signerDocument.trim();
-    if (trimmedName.length < 2) { toast.error("Nome muito curto."); return; }
-    if (trimmedName.length > 200) { toast.error("Nome muito longo."); return; }
-    if (trimmedDoc.length < 5 || trimmedDoc.length > 20) { toast.error("Documento inválido."); return; }
     if (!signatureDataUrl) { toast.error("Desenhe sua assinatura antes de continuar."); return; }
     if (!agreed) { toast.error("Você precisa aceitar os termos."); return; }
     if (!rateLimiter.check("sign-contract", 3, 5*60*1000)) { toast.error("Muitas tentativas. Aguarde alguns minutos."); return; }
     setSigning(true);
     try {
-      await signProposal(token, { signerName: sanitizeInput(trimmedName), signerDocument: sanitizeInput(trimmedDoc), signatureDataUrl });
+      const signerNameSafe = validateSignerName(signerName);
+      const signerDocumentSafe = normalizeSignerDocument(signerDocument);
+      const signatureDataUrlSafe = validateSignatureDataUrl(signatureDataUrl);
+
+      await signProposal(token, {
+        signerName: sanitizeInput(signerNameSafe),
+        signerDocument: signerDocumentSafe,
+        signatureDataUrl: signatureDataUrlSafe,
+      });
       toast.success("Contrato assinado com sucesso!");
       const updated: any = await getPublicProposal(token);
       setProposal(updated);

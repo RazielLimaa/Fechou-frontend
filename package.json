@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test:security": "node scripts/security-audit-checks.mjs"
+    "test:security": "node scripts/security-audit-checks.mjs",
+    "test:signature-security": "tsx scripts/signature-security.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

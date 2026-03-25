@@ -79,3 +79,10 @@
 2. Integração CSRF memory-only com bootstrap por endpoint/header de backend.
 3. Normalização de respostas de segurança (401/403/429 + códigos de política).
 4. Ampliação de checks automatizados para anti-drift e invariantes de hardening.
+
+## 10) Hardening adicional em assinatura (fase final)
+
+- Validação unificada de assinatura (`data:image/png;base64`), limite de bytes e verificação de header PNG.
+- Validação/normalização de nome e documento do assinante (CPF/CNPJ em dígitos).
+- Aplicado tanto no serviço canônico de proposta quanto nos fluxos públicos de assinatura.
+- Adicionados testes dedicados de assinatura (`test:signature-security`).

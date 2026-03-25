@@ -1,5 +1,10 @@
 import { authStorage } from "../lib/auth-storage";
 import { getCsrfToken } from "../lib/security";
+import {
+  normalizeSignerDocument,
+  validateSignatureDataUrl,
+  validateSignerName,
+} from "../lib/signature-security";
 
 export type ApiProposalStatus = "pendente" | "vendida" | "cancelada";
 
@@ -75,16 +80,6 @@ function safePublicToken(token: string): string {
   }
 
   return t.toLowerCase();
-}
-
-function validateSignatureDataUrl(signatureDataUrl: string): string {
-  const value = signatureDataUrl.trim();
-
-  if (!value) throw new Error("Assinatura não informada.");
-  if (!/^data:image\/png;base64,/i.test(value)) throw new Error("Formato de assinatura inválido.");
-  if (value.length > 2_500_000) throw new Error("Assinatura muito grande.");
-
-  return value;
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
@@ -183,17 +178,9 @@ export function getPublicProposal(token: string): Promise<ApiProposal> {
 }
 
 export function signProposal(token: string, data: SignProposalPayload): Promise<SignProposalResponse> {
-  const signerName = data.signerName.trim();
-  const signerDocument = data.signerDocument.trim();
+  const signerName = validateSignerName(data.signerName);
+  const signerDocument = normalizeSignerDocument(data.signerDocument);
   const signatureDataUrl = validateSignatureDataUrl(data.signatureDataUrl);
-
-  if (signerName.length < 2 || signerName.length > 200) {
-    throw new Error("Nome do assinante inválido.");
-  }
-
-  if (signerDocument.length < 5 || signerDocument.length > 20) {
-    throw new Error("Documento do assinante inválido.");
-  }
 
   return apiFetch<SignProposalResponse>(`/api/proposals/public/${safePublicToken(token)}/sign`, {
     method: "POST",

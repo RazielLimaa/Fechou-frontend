@@ -1,4 +1,5 @@
 import { api } from './api';
+import { normalizeSignerDocument, validateSignerName } from '../lib/signature-security';
 
 export interface Proposal {
   id: string;
@@ -29,6 +30,7 @@ export interface PublicProposalResponse {
 export interface SignContractRequest {
   signerName: string;
   signerDocument: string;
+  signatureDataUrl?: string;
 }
 
 export interface PublicCheckoutRequest {
@@ -67,7 +69,12 @@ export const proposalsService = {
     return data;
   },
   signContract: async (token: string, payload: SignContractRequest) => {
-    const { data } = await api.post(`/api/proposals/public/${safePublicToken(token)}/sign`, payload);
+    const safePayload: SignContractRequest = {
+      signerName: validateSignerName(payload.signerName),
+      signerDocument: normalizeSignerDocument(payload.signerDocument),
+      ...(payload.signatureDataUrl ? { signatureDataUrl: payload.signatureDataUrl } : {}),
+    };
+    const { data } = await api.post(`/api/proposals/public/${safePublicToken(token)}/sign`, safePayload);
     return data;
   },
   checkout: async (token: string, payload: PublicCheckoutRequest) => {

@@ -40,6 +40,13 @@ ok(
   'checkout/payment redirects should validate URLs'
 );
 
+const signaturePaths = ['src/service/proposals.ts', 'src/pages/contrato-publico.tsx', 'src/services/proposals.ts'];
+ok(
+  'signature_validation_hardening',
+  signaturePaths.every((p) => /validateSignatureDataUrl|normalizeSignerDocument|validateSignerName/.test(read(p))),
+  'signature and signer fields should be validated before submission'
+);
+
 const lsAccessTokenMatches = execSync(
   "rg -n \"localStorage\\.(getItem|setItem|removeItem)\\(\\\"access_token\\\"|localStorage\\.(getItem|setItem|removeItem)\\('access_token'\" src || true",
   { encoding: 'utf8' }
