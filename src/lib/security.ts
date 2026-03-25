@@ -1,3 +1,4 @@
+import { authStorage } from "./auth-storage";
 // ── Security utilities ──────────────────────────────────────────────
 
 /**
@@ -158,9 +159,7 @@ export function preventClickjacking(): void {
  * Clear all sensitive data from storage on logout.
  */
 export function secureLogout(): void {
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("user");
-  sessionStorage.removeItem("_csrf_token");
+  authStorage.clearAll();
   // Clear all query caches
   window.location.href = "/login";
 }

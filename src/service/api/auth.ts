@@ -27,7 +27,7 @@ export function register(name: string, email: string, password: string) {
   });
 }
 
-export function me(token: string) {
+export function me(token?: string) {
   return apiFetch<AuthUser>(`${API_PREFIX}/me`, {
     method: "GET",
     token,

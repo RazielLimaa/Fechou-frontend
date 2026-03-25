@@ -1,4 +1,5 @@
 import React from "react";
+import { authStorage } from "../lib/auth-storage";
 // src/pages/Propostas.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -175,7 +176,7 @@ export default function Propostas() {
   const [pixKeyLoading, setPixKeyLoading]   = useState(true);
 
   const reload = useCallback(async () => {
-    const token = localStorage.getItem("access_token");
+    const token = authStorage.getAccessToken();
     if (!token) { navigate("/login"); return; }
     setIsLoading(true); setPlanLoading(true); setError(null);
     try {
