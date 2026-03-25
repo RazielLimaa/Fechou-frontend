@@ -1,6 +1,7 @@
 import { api } from "./../services/api";
 
 const PREFIX = "/api/payments";
+const SKIP_PAYMENTS_ME = String(import.meta.env.VITE_SKIP_PAYMENTS_ME ?? "false").toLowerCase() === "true";
 
 const ALLOWED_BACK_URL_ORIGINS = [
   "https://fechou.cloud",
@@ -143,6 +144,18 @@ export type CancelSubscriptionResponse = {
 };
 
 export async function getBillingMe(): Promise<PaymentsMeResponse> {
+  if (SKIP_PAYMENTS_ME) {
+    return {
+      payments: [],
+      subscription: null,
+      plan: {
+        planId: "free",
+        status: null,
+        isSubscribed: false,
+      },
+    };
+  }
+
   try {
     const { data } = await api.get<PaymentsMeResponse>(`${PREFIX}/me`);
     return data;

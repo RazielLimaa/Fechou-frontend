@@ -133,7 +133,9 @@ function buildContractHtml(
       ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).format(new Date(d))
       : d;
 
-  const contractNumber = `FECH-${String(contract.id).padStart(6, "0")}`;
+  const contractNumber = isPro && !layout.showFechouBranding
+    ? `CTR-${String(contract.id).padStart(6, "0")}`
+    : `FECH-${String(contract.id).padStart(6, "0")}`;
   const today = fmtDate(new Date().toISOString());
 
   const watermarkRows = Array.from({ length: 40 }).map((_, i) => {
@@ -147,14 +149,16 @@ function buildContractHtml(
 
   const logoHtml = isPro && layout.logoUrl
     ? `<img src="${layout.logoUrl}" style="height:36px;object-fit:contain;margin-bottom:6px;" />`
-    : `<div style="font-size:28px;font-weight:900;letter-spacing:-0.02em;color:#111;">FECHOU<span style="color:${color}">!</span></div>
-       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.25em;color:#888;margin-top:2px;">Plataforma de Contratos</div>`;
+    : isPro && !layout.showFechouBranding
+      ? ``
+      : `<div style="font-size:28px;font-weight:900;letter-spacing:-0.02em;color:#111;">FECHOU<span style="color:${color}">!</span></div>
+         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.25em;color:#888;margin-top:2px;">Plataforma de Contratos</div>`;
 
   // Premium pode remover totalmente o branding "Fechou"
   // Se for Premium e showFechouBranding for false, remove TUDO (sem nenhum texto)
   // Se for Pro (mas não Premium) ou se showFechouBranding for true, mostra o branding
-  const brandingLine = isPremium && !layout.showFechouBranding
-    ? `` // Premium com branding desativado = remoção total
+  const brandingLine = isPro && !layout.showFechouBranding
+    ? ``
     : `<div style="font-size:10px;color:#ccc;text-transform:uppercase;letter-spacing:0.2em;">FECHOU! — fechou.app</div>`;
 
   const clausesHtml = clauses.length > 0 ? `
@@ -522,24 +526,13 @@ function AppearancePanel({ layout, onChange, planId, contractId }: AppearancePan
           )}
           <input key={inputKey} ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
 
-          {/* Opção de remover branding "Fechou" só disponível no Premium */}
-          {isPremium && (
-            <label className="flex items-center gap-2 cursor-pointer" onClick={() => set({ showFechouBranding: !layout.showFechouBranding })}>
-              <div className={`w-8 h-4 rounded-full transition-colors flex items-center px-0.5 ${layout.showFechouBranding ? "bg-accent" : "bg-muted"}`}>
-                <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${layout.showFechouBranding ? "translate-x-4" : "translate-x-0"}`} />
-              </div>
-              <span className="text-xs text-muted-foreground">Mostrar "via Fechou!"</span>
-            </label>
-          )}
-          {!isPremium && (
-            <div className="flex items-center gap-2 opacity-50">
-              <div className="w-8 h-4 rounded-full bg-muted flex items-center px-0.5">
-                <div className="w-3 h-3 rounded-full bg-white shadow translate-x-4" />
-              </div>
-              <span className="text-xs text-muted-foreground">Mostrar "via Fechou!"</span>
-              <Crown size={10} className="text-yellow-500" />
+          {/* Pro e Premium podem remover menções da Fechou no documento */}
+          <label className="flex items-center gap-2 cursor-pointer" onClick={() => set({ showFechouBranding: !layout.showFechouBranding })}>
+            <div className={`w-8 h-4 rounded-full transition-colors flex items-center px-0.5 ${layout.showFechouBranding ? "bg-accent" : "bg-muted"}`}>
+              <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${layout.showFechouBranding ? "translate-x-4" : "translate-x-0"}`} />
             </div>
-          )}
+            <span className="text-xs text-muted-foreground">Mostrar menções da Fechou</span>
+          </label>
         </section>
 
         <section className="space-y-2">
