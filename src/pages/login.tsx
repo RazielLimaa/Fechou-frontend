@@ -8,8 +8,8 @@ import { authStorage } from "../lib/auth-storage";
 import { rateLimiter, isValidEmail, sanitizeInput, preventClickjacking } from "../lib/security";
 import { useSession } from "../context/session-context";
 
-const GOOGLE_CLIENT_ID =
-  "773668316637-ajvug1pnn2flcjv0gl3f1sc4rsnfth54.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "").trim();
+const GOOGLE_AUTH_ENABLED = GOOGLE_CLIENT_ID.length > 0;
 
 // ── Canvas ────────────────────────────────────────────────────────────────────
 function Bg() {
@@ -319,8 +319,8 @@ function LoginForm() {
           <div style={{ marginBottom: 20 }}>
             <motion.button
               type="button"
-              onClick={() => googleLogin()}
-              disabled={isAnyLoading}
+              onClick={() => GOOGLE_AUTH_ENABLED && googleLogin()}
+              disabled={isAnyLoading || !GOOGLE_AUTH_ENABLED}
               aria-label="Continuar com Google"
               aria-busy={googleLoading}
               whileHover={!isAnyLoading ? { scale: 1.02, borderColor: "rgba(255,102,0,0.35)", background: "rgba(255,102,0,0.05)" } : {}}
@@ -330,14 +330,14 @@ function LoginForm() {
                 background: "rgba(255,255,255,0.03)",
                 border: "1px solid rgba(255,255,255,0.08)",
                 color: "rgba(255,255,255,0.75)", fontSize: 13, fontWeight: 600,
-                cursor: isAnyLoading ? "not-allowed" : "pointer", fontFamily: "inherit",
+                cursor: isAnyLoading || !GOOGLE_AUTH_ENABLED ? "not-allowed" : "pointer", fontFamily: "inherit",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                transition: "all 0.2s", opacity: isAnyLoading ? 0.5 : 1,
+                transition: "all 0.2s", opacity: isAnyLoading || !GOOGLE_AUTH_ENABLED ? 0.5 : 1,
               }}
             >
               {googleLoading
                 ? <div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-                : <><GoogleIcon size={16} /><span>Continuar com Google</span></>
+                : <><GoogleIcon size={16} /><span>{GOOGLE_AUTH_ENABLED ? "Continuar com Google" : "Google indisponível"}</span></>
               }
             </motion.button>
           </div>
@@ -415,8 +415,14 @@ function LoginForm() {
 
 // ── Wrapper com GoogleOAuthProvider ───────────────────────────────────────────
 export default function Login() {
+  useEffect(() => {
+    if (!GOOGLE_AUTH_ENABLED && import.meta.env.DEV) {
+      console.warn("VITE_GOOGLE_CLIENT_ID não configurado. Login com Google foi desabilitado.");
+    }
+  }, []);
+
   return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID || "disabled"}>
       <LoginForm />
     </GoogleOAuthProvider>
   );

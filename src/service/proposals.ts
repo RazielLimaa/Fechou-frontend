@@ -17,14 +17,12 @@ export interface ApiProposal {
   value: string;
   status: ApiProposalStatus;
   createdAt: string;
-
   contract?: {
     signed: boolean;
     signedAt: string | null;
     signerName: string | null;
     canPay: boolean;
   };
-
   pixKey?: string | null;
   pixKeyType?: string | null;
 }
@@ -68,17 +66,14 @@ function safeId(id: number): string {
   if (!Number.isInteger(id) || id <= 0 || id > 2_147_483_647) {
     throw new Error("ID inválido.");
   }
-
   return String(id);
 }
 
 function safePublicToken(token: string): string {
   const t = token.trim();
-
   if (!/^[a-f0-9]{64}$/i.test(t)) {
     throw new Error("Token inválido.");
   }
-
   return t.toLowerCase();
 }
 
@@ -163,7 +158,7 @@ export function createProposal(...args: [input: {
 
 export function generateShareLink(
   id: number,
-  expiresInHours?: number
+  expiresInHours?: number,
 ): Promise<{ shareToken: string; expiresAt: string; publicUrlPath: string }> {
   return apiFetch<{ shareToken: string; expiresAt: string; publicUrlPath: string }>(`/api/proposals/${id}/share-link`, {
     method: "POST",
@@ -197,11 +192,13 @@ export function signProposal(
  */
 export function markProposalPaid(
   id: number,
-  data?: { note?: string; payerName?: string; payerDocument?: string }
+  data?: { note?: string; payerName?: string; payerDocument?: string },
+  stepUpToken?: string,
 ): Promise<{ ok: boolean; proposalId: number; amountCents: number; externalPaymentId: string }> {
   return apiFetch(`/api/proposals/${safeId(id)}/mark-paid`, {
     method: "POST",
     json: data ?? {},
+    stepUpToken,
     headers: {
       "Idempotency-Key": `mark-paid-${id}-${Date.now()}`,
     },
@@ -232,7 +229,7 @@ export interface PremiumDashboardResponse {
 
 export function getPremiumDashboard(period: PremiumDashboardPeriod): Promise<PremiumDashboardResponse> {
   return apiFetch<PremiumDashboardResponse>(
-    `/api/analytics/premium-dashboard?period=${encodeURIComponent(period)}`
+    `/api/analytics/premium-dashboard?period=${encodeURIComponent(period)}`,
   );
 }
 
@@ -245,6 +242,7 @@ export async function exportPremiumDashboardCsv(): Promise<PremiumDashboardCsvEx
   const token = getToken();
   const res = await fetch(`${API_BASE}/api/analytics/premium-dashboard/export.csv`, {
     method: "GET",
+    credentials: "include",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       "X-Requested-With": "XMLHttpRequest",
@@ -259,14 +257,12 @@ export async function exportPremiumDashboardCsv(): Promise<PremiumDashboardCsvEx
 
   if (!res.ok) {
     let message = `Erro ${res.status}`;
-
     try {
       const data = await res.json();
       if (data?.message) message = data.message;
     } catch {
-      // fallback
+      // noop
     }
-
     throw new Error(message);
   }
 

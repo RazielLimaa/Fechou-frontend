@@ -235,11 +235,13 @@ export function generateContractShareLink(
 
 export function markContractPaid(
   contractId: number,
-  data: { note?: string; payerName?: string; payerDocument?: string }
+  data: { note?: string; payerName?: string; payerDocument?: string },
+  stepUpToken?: string,
 ): Promise<{ ok: boolean; contractId: number }> {
   return apiFetch(`${PREFIX}/${contractId}/mark-paid`, {
     method: "POST",
     json: data,
+    stepUpToken,
   });
 }
 
