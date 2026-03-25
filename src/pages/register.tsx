@@ -3,7 +3,9 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight, Check } from "lucide-react";
 import { register } from "../service/api/auth";
+import { authStorage } from "../lib/auth-storage";
 import { rateLimiter, isValidEmail, sanitizeInput, isStrongPassword } from "../lib/security";
+import { useSession } from "../context/session-context";
 
 // ── canvas: linhas diagonais animadas ────────────────────────────────────────
 function DiagBg() {
@@ -45,6 +47,7 @@ function DiagBg() {
 
 export default function Register() {
   const [, navigate] = useLocation();
+  const { refreshSession } = useSession();
   const [showPwd, setShowPwd] = useState(false);
   const [name, setName]   = useState("");
   const [email, setEmail] = useState("");
@@ -75,8 +78,9 @@ export default function Register() {
     setLoading(true);
     try {
       const r = await register(sanitizeInput(n), sanitizeInput(em), pwd);
-      localStorage.setItem("access_token", r.token);
-      localStorage.setItem("user", JSON.stringify(r.user));
+      authStorage.setAccessToken(r.token);
+      authStorage.setUserRaw(JSON.stringify(r.user));
+      await refreshSession();
       navigate("/propostas");
     } catch (err: any) { setError(err?.message ?? "Falha ao criar conta."); }
     finally { setLoading(false); }

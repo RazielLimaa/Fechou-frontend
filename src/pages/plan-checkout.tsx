@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
+import { authStorage } from "../lib/auth-storage";
 import {
   ShieldCheck, Lock, ArrowLeft, Crown, Briefcase,
   CheckCircle2, AlertCircle, Loader2, ExternalLink,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import Navbar from "../components/landing/Navbar";
 import { createSubscriptionCheckout, confirmSubscription } from "../service/payment";
+import { getSafeRedirectUrl } from "../lib/security";
 
 // ─── Dados dos planos ─────────────────────────────────────────────────────────
 
@@ -52,7 +54,7 @@ type PlanKey = keyof typeof PLAN_MAP;
 
 function isLoggedIn(): boolean {
   try {
-    const token = localStorage.getItem("access_token");
+    const token = authStorage.getAccessToken();
     if (!token || token.trim().length === 0) return false;
     // Valida formato básico de JWT sem expor conteúdo
     const parts = token.split(".");
@@ -119,7 +121,9 @@ export default function PlanCheckout() {
 
   try {
     const { checkoutUrl } = await createSubscriptionCheckout(planId, {});
-    window.location.href = checkoutUrl;
+    const safeUrl = getSafeRedirectUrl(checkoutUrl);
+    if (!safeUrl) throw new Error("URL de checkout inválida.");
+    window.location.href = safeUrl;
   } catch (err: any) {
     setError(err?.message ?? "Não foi possível iniciar o pagamento.");
     setPhase("error");

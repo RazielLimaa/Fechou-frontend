@@ -1,4 +1,10 @@
+import { authStorage } from "../lib/auth-storage";
 import { getCsrfToken } from "../lib/security";
+import {
+  normalizeSignerDocument,
+  validateSignatureDataUrl,
+  validateSignerName,
+} from "../lib/signature-security";
 
 export type ApiProposalStatus = "pendente" | "vendida" | "cancelada";
 
@@ -35,12 +41,8 @@ export type SignProposalResponse = {
   signedAt: string | null;
 };
 
-// ─── config ──────────────────────────────────────────────────────────────────
-
 const RAW_BASE = (import.meta as any)?.env?.VITE_API_URL ?? "http://localhost:3001";
 const API_BASE = String(RAW_BASE).trim().replace(/\/+$/, "");
-
-// ─── segurança ────────────────────────────────────────────────────────────────
 
 function isLikelyJwt(token: string): boolean {
   if (!token) return false;
@@ -48,16 +50,14 @@ function isLikelyJwt(token: string): boolean {
   if (/[<>\s"']/.test(token)) return false;
 
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
-
-  return true;
+  return parts.length === 3;
 }
 
 function getToken(): string {
-  const token = localStorage.getItem("access_token") ?? "";
+  const token = authStorage.getAccessToken() ?? "";
 
   if (!isLikelyJwt(token)) {
-    if (token) localStorage.removeItem("access_token");
+    if (token) authStorage.clearAccessToken();
     return "";
   }
 
@@ -82,29 +82,6 @@ function safePublicToken(token: string): string {
   return t.toLowerCase();
 }
 
-// ─── validações locais do payload de assinatura ─────────────────────────────
-
-function validateSignatureDataUrl(signatureDataUrl: string): string {
-  const value = signatureDataUrl.trim();
-
-  if (!value) {
-    throw new Error("Assinatura não informada.");
-  }
-
-  if (!/^data:image\/png;base64,/i.test(value)) {
-    throw new Error("Formato de assinatura inválido.");
-  }
-
-  // limite defensivo no frontend para evitar payload exagerado
-  if (value.length > 2_500_000) {
-    throw new Error("Assinatura muito grande.");
-  }
-
-  return value;
-}
-
-// ─── apiFetch ─────────────────────────────────────────────────────────────────
-
 async function apiFetch<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
 
@@ -128,7 +105,7 @@ async function apiFetch<T>(path: string, init?: RequestInit & { json?: unknown }
         "X-Requested-With": "XMLHttpRequest",
         "Cache-Control": "no-store",
         Pragma: "no-cache",
-        Authorization: `Bearer ${getToken()}`,
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
         ...csrfHeaders,
         ...(init?.headers ?? {}),
       },
@@ -137,15 +114,12 @@ async function apiFetch<T>(path: string, init?: RequestInit & { json?: unknown }
     clearTimeout(timeoutId);
 
     if (res.status === 401) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("user");
+      authStorage.clearAll();
       window.location.href = "/login";
       throw new Error("Sessão expirada.");
     }
 
-    if (res.status === 204) {
-      return null as unknown as T;
-    }
+    if (res.status === 204) return null as unknown as T;
 
     const text = await res.text();
     const data = text ? JSON.parse(text) : null;
@@ -165,8 +139,6 @@ async function apiFetch<T>(path: string, init?: RequestInit & { json?: unknown }
     throw err;
   }
 }
-
-// ─── funções públicas ─────────────────────────────────────────────────────────
 
 export function listProposals(): Promise<ApiProposal[]> {
   return apiFetch<ApiProposal[]>("/api/proposals");
@@ -227,14 +199,80 @@ export function markProposalPaid(
   id: number,
   data?: { note?: string; payerName?: string; payerDocument?: string }
 ): Promise<{ ok: boolean; proposalId: number; amountCents: number; externalPaymentId: string }> {
-  return apiFetch<{ ok: boolean; proposalId: number; amountCents: number; externalPaymentId: string }>(
-    `/api/proposals/${id}/mark-paid`,
-    {
+  return apiFetch(`/api/proposals/${safeId(id)}/mark-paid`, {
     method: "POST",
-      body: JSON.stringify(data ?? {}),
+    json: data ?? {},
     headers: {
-        "Idempotency-Key": `mark-paid-${id}-${Date.now()}`,
-      },
-    }
+      "Idempotency-Key": `mark-paid-${id}-${Date.now()}`,
+    },
+  });
+}
+
+export function cancelProposal(id: number): Promise<{ ok: boolean; proposalId: number }> {
+  return apiFetch(`/api/proposals/${safeId(id)}/cancel`, {
+    method: "PATCH",
+  });
+}
+
+export type PremiumDashboardPeriod = "monthly" | "weekly";
+
+export interface PremiumDashboardResponse {
+  period: PremiumDashboardPeriod;
+  generatedAt: string;
+  soldCount: number;
+  pendingCount: number;
+  canceledCount: number;
+  totalValue: number;
+  pendingValue: number;
+  avgTicket: number;
+  conversionRatePct: number;
+  chartData: Array<{ name: string; sold: number; pending: number; revenue: number }>;
+  pendingReasons: Array<{ name: string; value: number }>;
+}
+
+export function getPremiumDashboard(period: PremiumDashboardPeriod): Promise<PremiumDashboardResponse> {
+  return apiFetch<PremiumDashboardResponse>(
+    `/api/analytics/premium-dashboard?period=${encodeURIComponent(period)}`
   );
+}
+
+export interface PremiumDashboardCsvExport {
+  blob: Blob;
+  fileName: string;
+}
+
+export async function exportPremiumDashboardCsv(): Promise<PremiumDashboardCsvExport> {
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/api/analytics/premium-dashboard/export.csv`, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      "X-Requested-With": "XMLHttpRequest",
+    },
+  });
+
+  if (res.status === 401) {
+    authStorage.clearAll();
+    window.location.href = "/login";
+    throw new Error("Sessao expirada.");
+  }
+
+  if (!res.ok) {
+    let message = `Erro ${res.status}`;
+
+    try {
+      const data = await res.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // fallback
+    }
+
+    throw new Error(message);
+  }
+
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const fileNameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  const fileName = fileNameMatch?.[1] || `PowerBI_Vendas_Completo_${new Date().toISOString().slice(0, 10)}.csv`;
+
+  return { blob: await res.blob(), fileName };
 }
