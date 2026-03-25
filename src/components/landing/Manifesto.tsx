@@ -811,7 +811,7 @@ export default function Manifesto() {
 
             <div
               ref={pqRef}
-              style={{ borderRadius: 18, overflow: "hidden", minHeight: 660, position: "relative" }}
+              style={{ borderRadius: 18, overflow: "hidden", minHeight: 860, position: "relative" }}
             >
               <PScrollBg sectionRef={pqRef} />
             </div>

@@ -176,160 +176,16 @@ export function getProposalById(id: number): Promise<ApiProposal> {
   return apiFetch<ApiProposal>(`/api/proposals/${safeId(id)}`);
 }
 
-export function createProposal(input: {
+
+export function createProposal(...args: [input: {
   title: string;
   clientName: string;
   description: string;
   value: number;
-}): Promise<ApiProposal> {
+}]): Promise<ApiProposal> {
   return apiFetch<ApiProposal>("/api/proposals", {
     method: "POST",
-    json: input,
-  });
-}
-
-export function generateShareLink(
-  id: number,
-  expiresInHours?: number
-): Promise<{ shareToken: string; expiresAt: string; publicUrlPath: string }> {
-  return apiFetch(`/api/proposals/${safeId(id)}/share-link`, {
-    method: "POST",
-    json: { expiresInHours },
-    headers: {
-      "Idempotency-Key": `share-link-${id}-${Date.now()}`,
-    },
-  });
-}
-
-export function getPublicProposal(token: string): Promise<ApiProposal> {
-  return apiFetch<ApiProposal>(`/api/proposals/public/${safePublicToken(token)}`);
-}
-
-export function signProposal(
-  token: string,
-  data: SignProposalPayload
-): Promise<SignProposalResponse> {
-  const signerName = data.signerName.trim();
-  const signerDocument = data.signerDocument.trim();
-  const signatureDataUrl = validateSignatureDataUrl(data.signatureDataUrl);
-
-  if (signerName.length < 2 || signerName.length > 200) {
-    throw new Error("Nome do assinante inválido.");
-  }
-
-  if (signerDocument.length < 5 || signerDocument.length > 20) {
-    throw new Error("Documento do assinante inválido.");
-  }
-
-  return apiFetch<SignProposalResponse>(`/api/proposals/public/${safePublicToken(token)}/sign`, {
-    method: "POST",
-    json: {
-      signerName,
-      signerDocument,
-      signatureDataUrl,
-    },
-    headers: {
-      "Idempotency-Key": `public-sign-${Date.now()}`,
-    },
-  });
-}
-
-export function markProposalPaid(
-  id: number,
-  data?: { note?: string; payerName?: string; payerDocument?: string }
-): Promise<{ ok: boolean; proposalId: number; amountCents: number; externalPaymentId: string }> {
-  return apiFetch(`/api/proposals/${safeId(id)}/mark-paid`, {
-    method: "POST",
-    json: data ?? {},
-    headers: {
-      "Idempotency-Key": `mark-paid-${id}-${Date.now()}`,
-    },
-  });
-}
-
-export function cancelProposal(id: number): Promise<{ ok: boolean; proposalId: number }> {
-  return apiFetch(`/api/proposals/${safeId(id)}/cancel`, {
-    method: "PATCH",
-  });
-}
-
-// ─── premium dashboard ────────────────────────────────────────────────────────
-
-export type PremiumDashboardPeriod = "monthly" | "weekly";
-
-export interface PremiumDashboardResponse {
-  period: PremiumDashboardPeriod;
-  generatedAt: string;
-  soldCount: number;
-  pendingCount: number;
-  canceledCount: number;
-  totalValue: number;
-  pendingValue: number;
-  avgTicket: number;
-  conversionRatePct: number;
-  chartData: Array<{ name: string; sold: number; pending: number; revenue: number }>;
-  pendingReasons: Array<{ name: string; value: number }>;
-}
-
-export function getPremiumDashboard(
-  period: PremiumDashboardPeriod
-): Promise<PremiumDashboardResponse> {
-  return apiFetch<PremiumDashboardResponse>(
-    `/api/analytics/premium-dashboard?period=${encodeURIComponent(period)}`
-  );
-}
-
-export interface PremiumDashboardCsvExport {
-  blob: Blob;
-  fileName: string;
-}
-
-export async function exportPremiumDashboardCsv(): Promise<PremiumDashboardCsvExport> {
-  const res = await fetch(`${API_BASE}/api/analytics/premium-dashboard/export.csv`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-      "X-Requested-With": "XMLHttpRequest",
-    },
-  });
-
-  if (res.status === 401) {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
-    window.location.href = "/login";
-    throw new Error("Sessao expirada.");
-  }
-
-  if (!res.ok) {
-    let message = `Erro ${res.status}`;
-
-    try {
-      const data = await res.json();
-      if (data?.message) message = data.message;
-    } catch {
-      // fallback
-    }
-
-    throw new Error(message);
-  }
-
-<<<<<<< HEAD
-  const disposition = res.headers.get("content-disposition") ?? "";
-  const fileNameMatch = disposition.match(/filename="?([^";]+)"?/i);
-  const fileName = fileNameMatch?.[1] || `PowerBI_Vendas_Completo_${new Date().toISOString().slice(0, 10)}.csv`;
-
-  return { blob: await res.blob(), fileName };
-}
-
-export function createProposal(input: {
-  title: string;
-  clientName: string;
-  description: string;
-  value: number;
-}): Promise<ApiProposal> {
-  return apiFetch<ApiProposal>("/api/proposals", {
-    method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify(oninput),
   });
 }
 
@@ -381,7 +237,4 @@ export function markProposalPaid(
       },
     }
   );
-=======
-  return res.blob();
->>>>>>> 48f4339 (poisé eu commitei la no dckend primeiro, entao se voce viu o commit la, voce ja sabe oque, mas saiba que essa idea pode dar muito certo, mais para frente tera novas coisas, com mais segurança, logico. talvez um dia, UM DIAgit add . o codigo vire um clean code.. mas por enquanto é rumo aos 100 primeiros assinantes. enfim, é isso, boa noite.)
 }
