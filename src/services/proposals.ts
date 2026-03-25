@@ -1,4 +1,5 @@
 import { api } from './api';
+import { normalizeSignerDocument, validateSignerName } from '../lib/signature-security';
 
 export interface Proposal {
   id: string;
@@ -29,6 +30,7 @@ export interface PublicProposalResponse {
 export interface SignContractRequest {
   signerName: string;
   signerDocument: string;
+  signatureDataUrl?: string;
 }
 
 export interface PublicCheckoutRequest {
@@ -36,6 +38,13 @@ export interface PublicCheckoutRequest {
   failureUrl: string;
   pendingUrl: string;
   payerEmail?: string;
+}
+
+
+function safePublicToken(token: string): string {
+  const t = token.trim();
+  if (!/^[a-f0-9]{64}$/i.test(t)) throw new Error("Token público inválido.");
+  return t.toLowerCase();
 }
 
 export const proposalsService = {
@@ -56,15 +65,20 @@ export const proposalsService = {
     return data;
   },
   getPublic: async (token: string) => {
-    const { data } = await api.get<PublicProposalResponse>(`/api/proposals/public/${token}`);
+    const { data } = await api.get<PublicProposalResponse>(`/api/proposals/public/${safePublicToken(token)}`);
     return data;
   },
   signContract: async (token: string, payload: SignContractRequest) => {
-    const { data } = await api.post(`/api/proposals/public/${token}/sign`, payload);
+    const safePayload: SignContractRequest = {
+      signerName: validateSignerName(payload.signerName),
+      signerDocument: normalizeSignerDocument(payload.signerDocument),
+      ...(payload.signatureDataUrl ? { signatureDataUrl: payload.signatureDataUrl } : {}),
+    };
+    const { data } = await api.post(`/api/proposals/public/${safePublicToken(token)}/sign`, safePayload);
     return data;
   },
   checkout: async (token: string, payload: PublicCheckoutRequest) => {
-    const { data } = await api.post<{ checkoutUrl: string }>(`/api/payments/public/${token}/checkout`, payload);
+    const { data } = await api.post<{ checkoutUrl: string }>(`/api/payments/public/${safePublicToken(token)}/checkout`, payload);
     return data;
   },
 };

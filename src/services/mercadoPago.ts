@@ -220,7 +220,7 @@ export const mercadoPagoService = {
       }
       window.location.href = parsed.toString();
     } catch (err) {
-      console.error("connectOAuth: URL inválida", err);
+      throw new Error("Não foi possível iniciar a conexão OAuth.");
     }
   },
 };

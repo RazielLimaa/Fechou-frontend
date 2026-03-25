@@ -306,32 +306,7 @@ function ActiveShape(props: any) {
   </g>);
 }
 
-<<<<<<< HEAD
-  const exportToExcel = async () => {
-    try {
-      const { blob, fileName } = await exportPremiumDashboardCsv();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      toast.success("Exportação gerada com sucesso!");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível exportar o CSV.");
-    }
-  };
 
-    toast.success("Exportação gerada com sucesso!");
-  };
-
-  if (planLoading || dashboardLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-accent"></div>
-=======
 // ─── UI Components ────────────────────────────────────────────────────────────
 function InfoBadge({text}:{text:string}) {
   return (
@@ -374,7 +349,6 @@ function SectionLabel({number,title,sub}:{number:string;title:string;sub:string}
       <div className="pb-1.5">
         <h2 className="text-2xl font-black tracking-tighter text-white uppercase">{title}</h2>
         <p className="text-[10px] text-white/25 mt-0.5 uppercase tracking-[0.25em] font-bold">{sub}</p>
->>>>>>> 48f4339 (poisé eu commitei la no dckend primeiro, entao se voce viu o commit la, voce ja sabe oque, mas saiba que essa idea pode dar muito certo, mais para frente tera novas coisas, com mais segurança, logico. talvez um dia, UM DIAgit add . o codigo vire um clean code.. mas por enquanto é rumo aos 100 primeiros assinantes. enfim, é isso, boa noite.)
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams, useLocation } from "wouter";
+import { authStorage } from "../../lib/auth-storage";
 import {
   Search, Plus, ArrowLeft, FileDown, Loader2, GripVertical,
   Trash2, Eye, Library, AlertCircle, CheckCircle2, Save, X,
@@ -375,17 +376,23 @@ function AppearancePanel({ layout, onChange, planId, contractId }: AppearancePan
 
   const set = (patch: Partial<LayoutCustomization>) => onChange({ ...layout, ...patch });
 
+  const hasValidImageSignature = async (file: File): Promise<boolean> => {
+    const buf = await file.slice(0, 12).arrayBuffer();
+    const b = new Uint8Array(buf);
+    const isPng = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+    const isJpeg = b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+    const isWebp = b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50;
+    return isPng || isJpeg || isWebp;
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    console.log("[v0] handleLogoUpload chamado, file:", file);
     if (!file) {
-      console.log("[v0] Nenhum arquivo selecionado");
       return;
     }
 
     const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
     const MAX_MB = 2;
-    console.log("[v0] Arquivo tipo:", file.type, "tamanho:", file.size);
     if (!ALLOWED.includes(file.type)) {
       toast.error("Tipo não permitido. Use JPEG, PNG ou WebP.");
       setInputKey(prev => prev + 1);
@@ -396,17 +403,19 @@ function AppearancePanel({ layout, onChange, planId, contractId }: AppearancePan
       setInputKey(prev => prev + 1);
       return;
     }
+    if (!(await hasValidImageSignature(file))) {
+      toast.error("Arquivo inválido. Envie uma imagem JPEG, PNG ou WebP válida.");
+      setInputKey(prev => prev + 1);
+      return;
+    }
 
-    console.log("[v0] Iniciando upload para contractId:", contractId);
     setUploadingLogo(true);
     try {
       const result = await uploadLogo(contractId, file);
-      console.log("[v0] Upload sucesso, result:", result);
       set({ logoUrl: result.logoUrl });
       toast.success("Logo enviada com sucesso!");
     } catch (err: any) {
-      console.error("[v0] Erro no upload de logo:", err);
-      toast.error(err?.message || "Erro ao enviar logo.");
+      toast.error(err?.message || "Não foi possível enviar a logo.");
     } finally {
       setUploadingLogo(false);
       // Força reset do input incrementando a key
@@ -968,7 +977,7 @@ if (!neverShow) {
 
     setState("idle");
   } catch (err) {
-    console.error("Erro ao carregar contrato:", err);
+    toast.error("Não foi possível carregar o contrato.");
     setState("error");
   }
 }, [contractIdNum]);
@@ -1004,7 +1013,7 @@ if (!neverShow) {
 
     setSignatureLoading(true);
     try {
-      const token = localStorage.getItem("access_token") ?? "";
+      const token = authStorage.getAccessToken() ?? "";
       const res = await fetch(`/api/contracts/${contractIdNum}/signature`, {
         credentials: "include",
         headers: { Accept: "image/png", Authorization: `Bearer ${token}` },
@@ -1052,7 +1061,7 @@ if (!neverShow) {
 
     setProviderSigLoading(true);
     try {
-      const token = localStorage.getItem("access_token") ?? "";
+      const token = authStorage.getAccessToken() ?? "";
       const headers = { Authorization: `Bearer ${token}`, Accept: "image/png" };
 
       const contractSigRes = await fetch(`/api/contracts/${contractIdNum}/provider-signature`, {
@@ -1087,7 +1096,7 @@ if (!neverShow) {
     if (!dataUrl) return;
     setProviderSigSaving(true);
     try {
-      const token = localStorage.getItem("access_token") ?? "";
+      const token = authStorage.getAccessToken() ?? "";
       const base64Only = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
       const res = await fetch("/api/contracts/provider-signature", {
         method: "POST",
@@ -1110,7 +1119,7 @@ if (!neverShow) {
     if (!contractIdNum) return;
     setProviderSigApplying(true);
     try {
-      const token = localStorage.getItem("access_token") ?? "";
+      const token = authStorage.getAccessToken() ?? "";
       const res = await fetch(`/api/contracts/${contractIdNum}/provider-signature`, {
         method: "POST",
         credentials: "include",
@@ -1130,7 +1139,7 @@ if (!neverShow) {
 
   const handleDeleteProviderSignature = useCallback(async () => {
     try {
-      const token = localStorage.getItem("access_token") ?? "";
+      const token = authStorage.getAccessToken() ?? "";
       await fetch("/api/contracts/provider-signature", {
         method: "DELETE",
         credentials: "include",
