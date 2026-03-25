@@ -22,7 +22,7 @@
 | Alta | Upload baseado só em MIME/extensão | Arquivo disfarçado | Mitigado |
 | Média | `dangerouslySetInnerHTML` com identificador dinâmico | CSS/selector injection | Mitigado |
 | Média | Logs de debug sensíveis | Vazamento em console/telemetria | Mitigado |
-| Média | Camadas `service` e `services` paralelas | regressão de segurança por divergência | Parcial (em consolidação) |
+| Média | Camadas `service` e `services` paralelas | regressão de segurança por divergência | Mitigado (wrapper canônico) |
 
 ## 3) Riscos corrigidos (resumo)
 
@@ -36,7 +36,7 @@
 
 ## 4) Riscos residuais
 
-- Persistem duas famílias de serviços (`src/service` e `src/services`) em paralelo; a convergência total ainda deve continuar para reduzir risco de drift.
+- Ainda existem duas famílias de serviços por compatibilidade, porém `src/services/api.ts` foi convertido em wrapper do client canônico (`src/service/api.ts`), reduzindo drift de segurança.
 - Ausência de suíte de testes de componente/E2E cobrindo todos os fluxos sensíveis.
 
 ## 5) Dependências de backend/infra
@@ -67,7 +67,7 @@
 
 | Item | Status | Arquivos | Risco residual |
 |---|---|---|---|
-| Camada API canônica + anti-drift | Mitigado | `src/service/api.ts`, `src/services/api.ts`, `scripts/security-audit-checks.mjs` | Ainda existem duas famílias de serviços, porém com contrato de segurança unificado e checks de regressão |
+| Camada API canônica + anti-drift | Corrigido/Mitigado | `src/service/api.ts`, `src/services/api.ts`, `scripts/security-audit-checks.mjs` | Mantém compatibilidade legada com wrapper, com baixo risco de drift |
 | Sessão backend-first por cookie | Corrigido/Mitigado | `src/context/session-context.tsx`, `src/components/AuthGuard.tsx`, `src/service/api.ts` | Depende de backend emitir sessão/cookies corretamente |
 | CSRF integração | Mitigado | `src/lib/csrf.ts`, `src/service/api.ts`, `src/services/api.ts` | Depende do endpoint/backend (`/api/auth/csrf` e/ou header `x-csrf-token`) |
 | UX neutra para step-up/cooldown/suspicious | Corrigido | `src/service/api.ts`, `src/services/api.ts` | Backend pode evoluir códigos; frontend já preparado para os principais |

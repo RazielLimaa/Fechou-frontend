@@ -26,8 +26,8 @@ ok('api_fetch_handles_401', /res\.status\s*===\s*401/.test(apiFetch), 'apiFetch 
 ok('api_fetch_csrf_integration', /getCsrfToken\(API_URL\)/.test(apiFetch), 'apiFetch should request CSRF token from backend-compatible source');
 
 const axiosApi = read('src/services/api.ts');
-ok('axios_csrf_integration', /getCsrfToken\(API_URL\)/.test(axiosApi), 'axios client should request CSRF token');
-ok('error_code_normalization', /STEP_UP_REQUIRED|COOLDOWN_ACTIVE|SUSPICIOUS_ACTIVITY/.test(axiosApi) && /STEP_UP_REQUIRED|COOLDOWN_ACTIVE|SUSPICIOUS_ACTIVITY/.test(apiFetch), 'clients should normalize security policy codes');
+ok('services_api_delegates_to_canonical_client', /apiFetch/.test(axiosApi), 'secondary API wrapper should delegate to canonical client');
+ok('error_code_normalization', /STEP_UP_REQUIRED|COOLDOWN_ACTIVE|SUSPICIOUS_ACTIVITY/.test(apiFetch), 'canonical client should normalize security policy codes');
 
 const openRedirectPaths = [
   'src/pages/plan-checkout.tsx',
