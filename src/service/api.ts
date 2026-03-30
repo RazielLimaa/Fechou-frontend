@@ -1,7 +1,10 @@
 import { authStorage } from "../lib/auth-storage";
 import { clearCsrfToken, getCsrfToken, setCsrfToken } from "../lib/csrf";
 
-export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || "http://localhost:3001";
+const rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+
+// Prefer same-origin by default to avoid browser CORS issues in production/reverse-proxy setups.
+export const API_URL = rawApiUrl && rawApiUrl.length > 0 ? rawApiUrl : window.location.origin;
 
 const MUTABLE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const DEFAULT_TIMEOUT_MS = 30_000;
