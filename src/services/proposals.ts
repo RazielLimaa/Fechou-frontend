@@ -18,6 +18,7 @@ export interface PaymentLinkResponse {
 }
 
 export interface PublicProposalResponse {
+  userId: number;
   id: string;
   title: string;
   amount: number;

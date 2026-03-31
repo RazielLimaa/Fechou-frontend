@@ -1,26 +1,55 @@
+/**
+ * Vision.tsx — arquivo completo com scroll suave via Lenis
+ *
+ * SETUP ÚNICO NECESSÁRIO:
+ *   npm install @studio-freight/lenis
+ *
+ * Adicione no seu App.tsx / layout raiz (UMA VEZ):
+ *
+ *   import Lenis from '@studio-freight/lenis'
+ *   import { useEffect } from 'react'
+ *
+ *   useEffect(() => {
+ *     const lenis = new Lenis({
+ *       duration: 1.2,
+ *       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+ *       smoothWheel: true,
+ *       touchMultiplier: 1.8,
+ *     })
+ *     ;(window as any).__lenis = lenis
+ *     let raf: number
+ *     function frame(time: number) { lenis.raf(time); raf = requestAnimationFrame(frame) }
+ *     raf = requestAnimationFrame(frame)
+ *     return () => { cancelAnimationFrame(raf); lenis.destroy(); delete (window as any).__lenis }
+ *   }, [])
+ */
+
 import { motion, useScroll, useTransform } from "framer-motion";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import Navbar from "../components/landing/Navbar";
 import Footer from "../components/landing/Footer";
 import Phone3D from "../components/Phone3D";
-import { ArrowRight, Focus, Target, Rocket, Eye, Shield, Layers } from "lucide-react";
+import { ArrowRight, Target, Rocket, Eye } from "lucide-react";
 import { Link } from "wouter";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PhonePinnedSection
+// PhonePinnedSection — scroll-lock robusto com Lenis
 // ─────────────────────────────────────────────────────────────────────────────
 function PhonePinnedSection() {
-  const sectionRef   = useRef<HTMLDivElement>(null);
-  const progressRef  = useRef(0);
-  const activeRef    = useRef(false);
-  const doneRef      = useRef(false);
-  const snapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sectionRef     = useRef<HTMLDivElement>(null);
+  const progressRef    = useRef(0);
+  const activeRef      = useRef(false);
+  const doneRef        = useRef(false);
+  const entryTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const accumulatorRef = useRef(0);
+  const rafRef         = useRef<number>(0);
 
   const [progress, setProgress] = useState(0);
   const [active,   setActive  ] = useState(false);
   const [done,     setDone    ] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
+  // ── responsividade ──────────────────────────────────────────────────────────
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -28,91 +57,10 @@ function PhonePinnedSection() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  // ── derivações de progresso ─────────────────────────────────────────────────
   const cp   = Math.min(1, Math.max(0, progress / 0.45));
   const sp   = Math.min(1, Math.max(0, (progress - 0.45) / 0.4));
   const step = progress < 0.12 ? 0 : progress < 0.45 ? 1 : progress < 0.78 ? 2 : 3;
-
-  function lock() {
-    if (activeRef.current || doneRef.current) return;
-    const el = sectionRef.current;
-    if (!el) return;
-    window.scrollTo({ top: el.offsetTop, behavior: "instant" as ScrollBehavior });
-    activeRef.current = true;
-    setActive(true);
-    document.documentElement.style.overflow = "hidden";
-  }
-
-  function unlock() {
-    if (!activeRef.current) return;
-    activeRef.current = false;
-    setActive(false);
-    document.documentElement.style.overflow = "";
-    const el = sectionRef.current;
-    if (el) window.scrollTo({ top: el.offsetTop + el.offsetHeight, behavior: "smooth" });
-  }
-
-  function advance(delta: number) {
-    if (!activeRef.current) return;
-    const next = Math.min(1, Math.max(0, progressRef.current + delta));
-    progressRef.current = next;
-    setProgress(next);
-    if (next >= 1 && !doneRef.current) {
-      doneRef.current = true;
-      setDone(true);
-      setTimeout(unlock, 1400);
-    }
-  }
-
-  useEffect(() => {
-    const onScroll = () => {
-      if (doneRef.current) return;
-      const el = sectionRef.current;
-      if (!el) return;
-      const inZone = window.scrollY + window.innerHeight > el.offsetTop && window.scrollY < el.offsetTop + el.offsetHeight;
-      if (inZone && !activeRef.current) {
-        if (snapTimerRef.current) clearTimeout(snapTimerRef.current);
-        snapTimerRef.current = setTimeout(lock, 80);
-      }
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (snapTimerRef.current) clearTimeout(snapTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    const onWheel = (e: WheelEvent) => {
-      if (!activeRef.current) return;
-      e.preventDefault();
-      advance(e.deltaY / 2800);
-    };
-    window.addEventListener("wheel", onWheel, { passive: false });
-    return () => window.removeEventListener("wheel", onWheel);
-  }, []);
-
-  useEffect(() => {
-    let startY = 0;
-    const onStart = (e: TouchEvent) => { startY = e.touches[0].clientY; };
-    const onMove  = (e: TouchEvent) => {
-      if (!activeRef.current) return;
-      e.preventDefault();
-      const dy = startY - e.touches[0].clientY;
-      startY = e.touches[0].clientY;
-      advance(dy / 1400);
-    };
-    window.addEventListener("touchstart", onStart, { passive: true });
-    window.addEventListener("touchmove",  onMove,  { passive: false });
-    return () => {
-      window.removeEventListener("touchstart", onStart);
-      window.removeEventListener("touchmove",  onMove);
-    };
-  }, []);
-
-  useEffect(() => () => {
-    document.documentElement.style.overflow = "";
-    if (snapTimerRef.current) clearTimeout(snapTimerRef.current);
-  }, []);
 
   const steps = [
     { num: "01", tag: "Template",   title: "Escolha o contrato",       body: "Dezenas de modelos para design, dev, foto e mais. Sua marca em segundos." },
@@ -121,6 +69,145 @@ function PhonePinnedSection() {
     { num: "04", tag: "PIX",        title: "Fechou! Receba na hora",   body: "Pagamento liberado direto na sua chave após a assinatura. Sem intermediários." },
   ];
 
+  // ── lock / unlock do Lenis + overflow ──────────────────────────────────────
+  const lockScroll = useCallback(() => {
+    const lenis = (window as any).__lenis;
+    if (lenis) lenis.stop();
+    document.documentElement.style.overflow = "hidden";
+  }, []);
+
+  const unlockScroll = useCallback(() => {
+    const lenis = (window as any).__lenis;
+    if (lenis) lenis.start();
+    document.documentElement.style.overflow = "";
+  }, []);
+
+  // ── flush do progresso via rAF (evita setState dentro de handler de evento) ─
+  const flushProgress = useCallback(() => {
+    const next = Math.min(1, Math.max(0, accumulatorRef.current));
+    progressRef.current = next;
+    setProgress(next);
+
+    if (next >= 1 && !doneRef.current) {
+      doneRef.current = true;
+      setDone(true);
+      setTimeout(() => {
+        activeRef.current = false;
+        setActive(false);
+        unlockScroll();
+        // Scroll suave Lenis até o próximo conteúdo
+        const lenis = (window as any).__lenis;
+        const el = sectionRef.current;
+        if (lenis && el) {
+          lenis.scrollTo(el.offsetTop + el.offsetHeight, {
+            duration: 1.2,
+            easing: (t: number) => 1 - Math.pow(1 - t, 4),
+          });
+        } else if (el) {
+          window.scrollTo({ top: el.offsetTop + el.offsetHeight, behavior: "smooth" });
+        }
+      }, 1400);
+    }
+  }, [unlockScroll]);
+
+  const scheduleFlush = useCallback(() => {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(flushProgress);
+  }, [flushProgress]);
+
+  const advance = useCallback((delta: number) => {
+    if (!activeRef.current) return;
+    accumulatorRef.current = Math.min(1, Math.max(0, accumulatorRef.current + delta));
+    scheduleFlush();
+  }, [scheduleFlush]);
+
+  // ── ativar seção com snap suave via Lenis ───────────────────────────────────
+  const activateSection = useCallback(() => {
+    if (activeRef.current || doneRef.current) return;
+    const el = sectionRef.current;
+    if (!el) return;
+
+    activeRef.current = true;
+    setActive(true);
+
+    const lenis = (window as any).__lenis;
+    if (lenis) {
+      lenis.scrollTo(el.offsetTop, {
+        duration: 0.55,
+        easing: (t: number) => 1 - Math.pow(1 - t, 3),
+        onComplete: () => lockScroll(),
+      });
+    } else {
+      window.scrollTo({ top: el.offsetTop, behavior: "smooth" });
+      lockScroll();
+    }
+  }, [lockScroll]);
+
+  // ── IntersectionObserver: detecta entrada robustamente ─────────────────────
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !activeRef.current && !doneRef.current) {
+          if (entryTimerRef.current) clearTimeout(entryTimerRef.current);
+          entryTimerRef.current = setTimeout(activateSection, 60);
+        }
+      },
+      { threshold: 0.4 }
+    );
+
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      if (entryTimerRef.current) clearTimeout(entryTimerRef.current);
+    };
+  }, [activateSection]);
+
+  // ── wheel com capture:true — intercepta ANTES do Lenis processar ───────────
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (!activeRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // Mouse wheel tem deltaY alto (100+), trackpad tem baixo — normaliza ambos
+      const normalized = Math.abs(e.deltaY) > 80
+        ? e.deltaY / 2800
+        : e.deltaY / 1600;
+      advance(normalized);
+    };
+    window.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => window.removeEventListener("wheel", onWheel, { capture: true } as EventListenerOptions);
+  }, [advance]);
+
+  // ── touch com capture:true ─────────────────────────────────────────────────
+  useEffect(() => {
+    let lastY = 0;
+    const onStart = (e: TouchEvent) => { lastY = e.touches[0].clientY; };
+    const onMove  = (e: TouchEvent) => {
+      if (!activeRef.current) return;
+      e.preventDefault();
+      const dy = lastY - e.touches[0].clientY;
+      lastY = e.touches[0].clientY;
+      advance(dy / 1200);
+    };
+    window.addEventListener("touchstart", onStart, { passive: true });
+    window.addEventListener("touchmove",  onMove,  { passive: false, capture: true });
+    return () => {
+      window.removeEventListener("touchstart", onStart);
+      window.removeEventListener("touchmove",  onMove,  { capture: true } as EventListenerOptions);
+    };
+  }, [advance]);
+
+  // ── cleanup ─────────────────────────────────────────────────────────────────
+  useEffect(() => () => {
+    unlockScroll();
+    cancelAnimationFrame(rafRef.current);
+    if (entryTimerRef.current) clearTimeout(entryTimerRef.current);
+  }, [unlockScroll]);
+
+  // ── visual constants ───────────────────────────────────────────────────────
   const RAYS = 24; const RINGS = 7; const CX = 50; const CY = 50; const MAX_R = 72;
 
   return (
@@ -243,7 +330,6 @@ function PhonePinnedSection() {
       {isMobile && (
         <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 20px 0", minHeight: 0, overflow: "hidden" }}>
 
-          {/* phone — escalonado para caber */}
           <div style={{ position: "relative", flexShrink: 0, transform: "scale(0.76)", transformOrigin: "top center", marginBottom: -20 }}>
             <motion.div
               animate={done ? { opacity: 0.9 } : { opacity: [0.3, 0.65, 0.3] }}
@@ -253,7 +339,6 @@ function PhonePinnedSection() {
             <Phone3D contractProgress={cp} signingProgress={sp} isComplete={done} />
           </div>
 
-          {/* step text */}
           <div style={{ position: "relative", width: "100%", height: 116, flexShrink: 0 }}>
             {steps.map((s, i) => (
               <motion.div key={i}
@@ -267,7 +352,6 @@ function PhonePinnedSection() {
             ))}
           </div>
 
-          {/* indicadores em linha */}
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
             {steps.map((_, i) => (
               <div key={i} style={{ height: 2, width: 32, borderRadius: 999, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
@@ -280,7 +364,6 @@ function PhonePinnedSection() {
             ))}
           </div>
 
-          {/* hint / done badge */}
           <div style={{ marginTop: 10, flexShrink: 0, height: 24, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
             <motion.div animate={{ opacity: done ? 0 : active ? 1 : 0.4 }} style={{ display: "flex", alignItems: "center", gap: 6, position: "absolute" }}>
               <motion.div animate={{ y: [0, 4, 0] }} transition={{ duration: 1.3, repeat: Infinity }}>
@@ -336,9 +419,9 @@ export default function Vision() {
   const heroScale   = useTransform(scrollYProgress, [0, 0.15], [1, 0.8]);
 
   const pillars: Pillar[] = [
-    { number: "01", title: "Clareza",   subtitle: "", description: "Cada proposta, cada acordo, cada detalhe fica cristalino. Sem espaco para mal-entendidos.", icon: Eye,    gradient: "" },
-    { number: "02", title: "Confianca", subtitle: "", description: "Mostre ao cliente que existe metodo, organizacao e compromisso por tras de cada entrega.",  icon: Target, gradient: "" },
-    { number: "03", title: "Autonomia", subtitle: "", description: "Ferramentas que respeitam seu tempo, seu esforco e sua forma unica de trabalhar.",           icon: Rocket, gradient: "" },
+    { number: "01", title: "Clareza",   subtitle: "", description: "Cada proposta, cada acordo, cada detalhe fica cristalino. Sem espaço para mal-entendidos.", icon: Eye,    gradient: "" },
+    { number: "02", title: "Confiança", subtitle: "", description: "Mostre ao cliente que existe método, organização e compromisso por trás de cada entrega.",  icon: Target, gradient: "" },
+    { number: "03", title: "Autonomia", subtitle: "", description: "Ferramentas que respeitam seu tempo, seu esforço e sua forma única de trabalhar.",           icon: Rocket, gradient: "" },
   ];
 
   return (
@@ -402,7 +485,7 @@ export default function Vision() {
         <div className="blur-blob bg-white/5 bottom-[-20%] left-[-10%] w-[600px] h-[600px]" />
         <motion.div style={{ opacity: heroOpacity, scale: heroScale }} className="relative z-10 text-center px-6">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-8">
-            <span className="inline-block px-6 py-2 rounded-full border border-accent/30 text-accent text-xs uppercase tracking-[0.3em] bg-accent/5 backdrop-blur-sm">Nossa Visao</span>
+            <span className="inline-block px-6 py-2 rounded-full border border-accent/30 text-accent text-xs uppercase tracking-[0.3em] bg-accent/5 backdrop-blur-sm">Nossa Visão</span>
           </motion.div>
           <motion.h1 initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.8 }}
             className="vis-hero-h1 font-display text-[15vw] md:text-[12rem] leading-[0.85] tracking-[-0.04em] mb-8">
@@ -411,8 +494,8 @@ export default function Vision() {
           </motion.h1>
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}
             className="text-xl md:text-3xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-            Nao construimos apenas uma ferramenta.<br />
-            <span className="text-foreground font-normal">Construimos a estrutura da sua autonomia.</span>
+            Não construímos apenas uma ferramenta.<br />
+            <span className="text-foreground font-normal">Construímos a estrutura da sua autonomia.</span>
           </motion.p>
         </motion.div>
       </section>
@@ -420,7 +503,6 @@ export default function Vision() {
       {/* ══ PONTE CINEMATOGRÁFICA ══ */}
       <section style={{ position: "relative", background: "#09090b", borderTop: "1px solid rgba(255,255,255,0.06)", overflow: "hidden", padding: "clamp(56px,10vh,130px) 0" }}>
 
-        {/* Spotlight — reflexo/feixe sem bola de origem */}
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
           <div style={{ position: "absolute", top: "-5%", left: "-8%", width: "90%", height: "130%", background: "conic-gradient(from 18deg at 0% 0%, rgba(255,100,0,0) 0deg, rgba(255,100,0,0.18) 14deg, rgba(255,130,0,0.22) 22deg, rgba(255,100,0,0.18) 30deg, rgba(255,100,0,0) 44deg)", transformOrigin: "0% 0%", filter: "blur(18px)" }} />
           <div style={{ position: "absolute", top: "-5%", left: "-8%", width: "70%", height: "110%", background: "conic-gradient(from 20deg at 0% 0%, rgba(255,120,0,0) 0deg, rgba(255,140,0,0.28) 18deg, rgba(255,160,0,0.35) 23deg, rgba(255,140,0,0.28) 28deg, rgba(255,120,0,0) 38deg)", transformOrigin: "0% 0%", filter: "blur(8px)" }} />
@@ -436,14 +518,12 @@ export default function Vision() {
 
         <div style={{ position: "relative", zIndex: 1, maxWidth: 1100, margin: "0 auto", padding: "0 clamp(20px,5vw,56px)" }}>
 
-          {/* eyebrow */}
           <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}
             style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "clamp(20px,4vh,40px)" }}>
             <span style={{ display: "inline-block", width: 28, height: 1, background: "#ff6600", flexShrink: 0 }} />
             <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.32em", color: "#ff6600" }}>Veja como funciona na prática</span>
           </motion.div>
 
-          {/* headline */}
           <div style={{ marginBottom: "clamp(28px,5vh,52px)" }}>
             <div style={{ fontSize: "clamp(28px,6.5vw,88px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.92 }}>
               <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}>
@@ -458,10 +538,7 @@ export default function Vision() {
             </div>
           </div>
 
-          {/* grid dor | divisor | processo */}
           <div className="vis-bridge-grid">
-
-            {/* esquerda — dor + stats */}
             <motion.div initial={{ opacity: 0, x: -18 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.65, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}>
               <p style={{ fontSize: "clamp(13px,1.5vw,17px)", color: "rgba(255,255,255,0.38)", lineHeight: 1.78, fontWeight: 300, marginBottom: 24 }}>
                 Cada proposta enviada no WhatsApp, cada "combinado" sem papel, cada projeto entregue sem contrato —
@@ -482,10 +559,8 @@ export default function Vision() {
               </div>
             </motion.div>
 
-            {/* divisor */}
             <div className="vis-bridge-divider" />
 
-            {/* direita — processo */}
             <motion.div initial={{ opacity: 0, x: 18 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.65, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}>
               <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "rgba(255,102,0,0.6)", marginBottom: 20 }}>O que acontece agora ↓</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -511,7 +586,6 @@ export default function Vision() {
             </motion.div>
           </div>
 
-          {/* frase de impacto */}
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, delay: 0.5 }}
             className="vis-bridge-foot">
             <p style={{ fontSize: "clamp(13px,2.2vw,22px)", fontWeight: 700, letterSpacing: "-0.03em", color: "rgba(255,255,255,0.12)", lineHeight: 1.35, maxWidth: 540 }}>
