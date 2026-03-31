@@ -282,7 +282,18 @@ export default function Propostas() {
     { name: "Não vendidas", value: stats.cancelled, color: "#f87171" },
   ], [stats]);
 
-  const getCfg = (item: UnifiedItem) => proposalStatusConfig[item.status] ?? proposalStatusConfig.rascunho;
+const getCfg = (item: UnifiedItem) => proposalStatusConfig[item.status] ?? proposalStatusConfig.rascunho;
+
+function toContractSigningPath(data: { publicUrlPath?: string; shareToken?: string }) {
+  const rawPath = (data.publicUrlPath ?? "").trim();
+  const normalizedPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+  const pathToken =
+    normalizedPath.match(/\/p\/(?:contract|review)\/([a-f0-9]{64})/i)?.[1]
+    ?? normalizedPath.match(/([a-f0-9]{64})/i)?.[1];
+  const token = (pathToken ?? data.shareToken ?? "").trim();
+  if (/^[a-f0-9]{64}$/i.test(token)) return `/p/contract/${token.toLowerCase()}`;
+  return normalizedPath || null;
+}
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleCopyLink = useCallback(async (item: UnifiedItem) => {
@@ -299,7 +310,14 @@ export default function Propostas() {
       const res = item.source === "contract"
         ? await generateContractShareLink(item.id)
         : await generateShareLink(item.id);
-      await navigator.clipboard.writeText(`${window.location.origin}${res.publicUrlPath}`);
+
+      const publicPath = item.source === "proposal"
+        ? toContractSigningPath(res)
+        : (res.publicUrlPath?.trim().startsWith("/") ? res.publicUrlPath.trim() : `/${(res.publicUrlPath ?? "").trim()}`);
+
+      if (!publicPath) throw new Error("Não foi possível gerar o link público.");
+
+      await navigator.clipboard.writeText(`${window.location.origin}${publicPath}`);
       toast.success("Link copiado!");
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao gerar link.");

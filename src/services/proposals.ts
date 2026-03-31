@@ -26,6 +26,26 @@ export interface PublicProposalResponse {
   freelancerName: string;
   isSigned: boolean;
   isPaid: boolean;
+  clientName?: string;
+  signerName?: string;
+  contractType?: string;
+  executionDate?: string;
+  paymentForm?: string;
+  status?: string;
+  planId?: 'free' | 'pro' | 'premium';
+  layoutConfig?: Record<string, any> | null;
+  logoUrl?: string | null;
+  clauses?: {
+    id: number;
+    clauseId: number;
+    title: string;
+    content: string;
+    customContent: string | null;
+    category: string;
+    orderIndex: number;
+  }[];
+  clientSignatureUrl?: string | null;
+  providerSignatureUrl?: string | null;
 }
 
 export interface SignContractRequest {
