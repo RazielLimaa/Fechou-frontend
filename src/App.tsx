@@ -83,6 +83,7 @@ function Router() {
       <Route path="/app/settings/payments">
         <PrivateRoute component={PaymentSettings} />
       </Route>
+      <Route path="/p/contract/:token" component={PublicContract} />
       <Route path="/p/review/:token" component={PublicContract} />
       <Route path="/p/feedback" component={PaymentFeedback} />
       <Route path="/c/:token" component={ContratoPublico} />
