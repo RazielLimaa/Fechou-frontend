@@ -40,6 +40,7 @@ const getPaymentFormLabel = (v: string) =>
 const signSchema = z.object({
   signerName:     z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
   signerDocument: z.string().min(11, "Documento inválido").max(18, "Documento inválido"),
+  acceptTerms:    z.literal(true, { errorMap: () => ({ message: "Você precisa aceitar os termos para continuar" }) }),
 });
 type SignForm = z.infer<typeof signSchema>;
 
@@ -711,6 +712,20 @@ export default function PublicContract() {
                             style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 9, padding: "10px 13px", color: "#fff", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
                           {errors.signerDocument && <p style={{ fontSize: 11, color: "#f87171", margin: "5px 0 0" }}>{errors.signerDocument.message}</p>}
                         </div>
+                      </div>
+
+                      <div>
+                        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11, color: "rgba(255,255,255,0.55)", lineHeight: 1.5 }}>
+                          <input
+                            type="checkbox"
+                            {...register("acceptTerms")}
+                            style={{ marginTop: 2, accentColor: ORANGE }}
+                          />
+                          <span>
+                            Li e aceito os termos deste contrato e concordo com a assinatura digital.
+                          </span>
+                        </label>
+                        {errors.acceptTerms && <p style={{ fontSize: 11, color: "#f87171", margin: "6px 0 0" }}>{errors.acceptTerms.message}</p>}
                       </div>
 
                       <motion.button type="submit"
