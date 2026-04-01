@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Link, useParams } from "wouter";
 import { generateShareLink } from "../service/proposals";
 import { toast } from "sonner";
+import { toAppAbsoluteUrl } from "../lib/public-url";
 
 interface ContractData {
   id: string;
@@ -39,6 +40,13 @@ export default function ContratoView() {
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+
+  const toSigningUrl = (data: { publicUrlPath?: string; shareToken?: string }) => {
+    const tokenFromPath = (data.publicUrlPath ?? "").match(/([a-f0-9]{64})/i)?.[1];
+    const token = (tokenFromPath ?? data.shareToken ?? "").trim();
+    if (!/^[a-f0-9]{64}$/i.test(token)) throw new Error("Token público inválido para compartilhamento.");
+    return toAppAbsoluteUrl(`/c/${token.toLowerCase()}`);
+  };
 
   return (
     <div className="min-h-screen bg-white text-black p-8 md:p-20 font-serif">
@@ -154,7 +162,7 @@ export default function ContratoView() {
             try {
               if (!id) return;
               const res = await generateShareLink(Number(id));
-              const url = `${window.location.origin}/c/${res.shareToken}`;
+              const url = toSigningUrl(res);
               await navigator.clipboard.writeText(url);
               toast.success("Link do contrato copiado com sucesso!");
               

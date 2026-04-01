@@ -12,6 +12,7 @@ import {
   ArrowUpRight, Flame, Target, Star, Lock,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { toAppAbsoluteUrl } from "../lib/public-url";
 import { Input } from "../components/ui/input";
 
 import {
@@ -291,7 +292,7 @@ function toContractSigningPath(data: { publicUrlPath?: string; shareToken?: stri
     normalizedPath.match(/\/p\/(?:contract|review)\/([a-f0-9]{64})/i)?.[1]
     ?? normalizedPath.match(/([a-f0-9]{64})/i)?.[1];
   const token = (pathToken ?? data.shareToken ?? "").trim();
-  if (/^[a-f0-9]{64}$/i.test(token)) return `/p/contract/${token.toLowerCase()}`;
+  if (/^[a-f0-9]{64}$/i.test(token)) return `/c/${token.toLowerCase()}`;
   return normalizedPath || null;
 }
 
@@ -317,7 +318,7 @@ function toContractSigningPath(data: { publicUrlPath?: string; shareToken?: stri
 
       if (!publicPath) throw new Error("Não foi possível gerar o link público.");
 
-      await navigator.clipboard.writeText(`${window.location.origin}${publicPath}`);
+      await navigator.clipboard.writeText(toAppAbsoluteUrl(publicPath));
       toast.success("Link copiado!");
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao gerar link.");

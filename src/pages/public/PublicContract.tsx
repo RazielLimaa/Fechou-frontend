@@ -1,15 +1,13 @@
 /**
  * PublicContract.tsx — Contrato público com avaliação pós-assinatura
- *                      + modo de revisão somente leitura (/p/review/:token)
  *                      + botão "Ver Contrato" antes de assinar
  *
- * Fluxos:
- *  A) /p/contract/:token  → ver preview → assinar → pagar → avaliar
- *  B) /p/review/:token    → preview somente leitura do contrato completo
+ * Fluxo público:
+ *  /c/:token (ou /p/contract/:token) → ver preview no modal → assinar → pagar → avaliar
  */
 
-import { useState, useRef, useEffect } from "react";
-import { useRoute, useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { useRoute } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { proposalsService } from "../../services/proposals";
@@ -21,7 +19,7 @@ import { getSafeRedirectUrl } from "../../lib/security";
 import {
   CheckCircle, FileSignature, CreditCard, Loader2,
   Shield, User, Hash, Star, ArrowRight, Eye, Lock,
-  FileText, Clock, CheckCircle2, X, ScrollText,
+  CheckCircle2, X, ScrollText,
 } from "lucide-react";
 import { RatingModal } from "./RatingModal";
 import {
@@ -42,6 +40,7 @@ const getPaymentFormLabel = (v: string) =>
 const signSchema = z.object({
   signerName:     z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
   signerDocument: z.string().min(11, "Documento inválido").max(18, "Documento inválido"),
+  acceptTerms:    z.literal(true, { errorMap: () => ({ message: "Você precisa aceitar os termos para continuar" }) }),
 });
 type SignForm = z.infer<typeof signSchema>;
 
@@ -62,21 +61,6 @@ const fmtDate = (d: string) =>
         day: "2-digit", month: "long", year: "numeric",
       }).format(new Date(d))
     : d;
-
-function Stars({ n, size = 12 }: { n: number; size?: number }) {
-  return (
-    <span style={{ display: "inline-flex", gap: 2 }}>
-      {[1, 2, 3, 4, 5].map((s) => (
-        <Star
-          key={s} size={size}
-          fill={s <= n ? "#f59e0b" : "none"}
-          stroke={s <= n ? "#f59e0b" : "rgba(255,255,255,0.15)"}
-          strokeWidth={1.5}
-        />
-      ))}
-    </span>
-  );
-}
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -482,170 +466,14 @@ function ContractPreviewModal({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// MODO REVISÃO (/p/review/:token)
-// ═════════════════════════════════════════════════════════════════════════════
-
-function ReviewMode({ token }: { token: string }) {
-  const { data, isLoading, error } = useQuery<ReviewData>({
-    queryKey: ["contract-review", token],
-    queryFn: async () => {
-      const res = await fetch(`/api/contracts/review/${token}`, { credentials: "omit" });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Contrato não encontrado");
-      }
-      const json = await res.json();
-      return {
-        ...json,
-        clauses:              json.clauses              ?? [],
-        layoutConfig:         json.layoutConfig         ?? null,
-        logoUrl:              json.logoUrl              ?? null,
-        clientSignatureUrl:   json.clientSignatureUrl   ?? null,
-        providerSignatureUrl: json.providerSignatureUrl ?? null,
-      } as ReviewData;
-    },
-    enabled: !!token,
-    staleTime: 1000 * 60 * 5,
-    retry: 1,
-  });
-
-  if (isLoading) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#080808", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: "'DM Sans', sans-serif" }}>
-        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.1, ease: "linear" }}>
-          <Loader2 size={22} color={ORANGE} />
-        </motion.div>
-        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>Carregando revisão…</span>
-      </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#080808", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
-        <div style={{ textAlign: "center", maxWidth: 380 }}>
-          <Shield size={44} color="rgba(239,68,68,0.4)" style={{ margin: "0 auto 20px", display: "block" }} />
-          <h1 style={{ fontSize: 24, fontWeight: 900, color: "#fff", margin: "0 0 8px", letterSpacing: "-0.03em" }}>
-            Revisão não encontrada
-          </h1>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", lineHeight: 1.7, margin: 0 }}>
-            Este link pode ter expirado ou ser inválido. Peça ao freelancer um novo link de revisão.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const previewHtml = buildContractHtml(data);
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#080808", color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>
-      <div style={{ position: "fixed", inset: "-200%", width: "400%", height: "400%", backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`, opacity: 0.02, pointerEvents: "none", zIndex: 0 }} />
-      <div style={{ position: "fixed", top: -100, left: "50%", transform: "translateX(-50%)", width: 600, height: 300, borderRadius: "50%", background: `radial-gradient(circle, ${ORANGE}10 0%, transparent 70%)`, pointerEvents: "none", zIndex: 0 }} />
-
-      <header style={{ padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)", position: "relative", zIndex: 1, backdropFilter: "blur(16px)" }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.01em" }}>
-            FECHOU<span style={{ color: ORANGE }}>!</span>
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <Eye size={9} color="rgba(255,255,255,0.35)" />
-              <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.25em", color: "rgba(255,255,255,0.35)" }}>
-                Somente leitura
-              </span>
-            </div>
-            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.2em", padding: "4px 10px", borderRadius: 999, background: data.isSigned ? "rgba(34,197,94,0.1)" : "rgba(245,158,11,0.1)", border: `1px solid ${data.isSigned ? "rgba(34,197,94,0.3)" : "rgba(245,158,11,0.3)"}`, color: data.isSigned ? "#22c55e" : "#f59e0b" }}>
-              {data.isPaid ? "Pago" : data.isSigned ? "Assinado" : "Em revisão"}
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }} style={{ position: "relative", zIndex: 1, padding: "20px 24px 0" }}>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
-          <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)", backdropFilter: "blur(16px)", padding: "16px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: `${ORANGE}15`, border: `1px solid ${ORANGE}25`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <FileText size={15} color={ORANGE} />
-              </div>
-              <div>
-                <p style={{ fontSize: 15, fontWeight: 800, color: "#fff", margin: 0, letterSpacing: "-0.02em" }}>
-                  {safe(data.title || getContractTypeLabel(data.contractType), 80)}
-                </p>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", margin: 0 }}>
-                  Proposta de <strong style={{ color: "rgba(255,255,255,0.5)" }}>{safe(data.freelancerName, 50)}</strong>
-                  {" · "}
-                  <span style={{ color: ORANGE, fontWeight: 700 }}>{formatCurrency(data.value)}</span>
-                </p>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {[
-                { label: "Freelancer", signed: !!data.providerSignatureUrl },
-                { label: "Cliente",    signed: !!data.clientSignatureUrl },
-              ].map(({ label, signed }) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, fontSize: 10, background: signed ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.04)", border: `1px solid ${signed ? "rgba(34,197,94,0.25)" : "rgba(255,255,255,0.07)"}`, color: signed ? "#86efac" : "rgba(255,255,255,0.25)" }}>
-                  {signed ? <CheckCircle2 size={9} /> : <Clock size={9} />}
-                  {label}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      <main style={{ padding: "20px 24px 60px", position: "relative", zIndex: 1 }}>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2, duration: 0.4 }} style={{ marginBottom: 16, padding: "10px 16px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", gap: 8 }}>
-            <Lock size={11} color="rgba(255,255,255,0.25)" />
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", margin: 0 }}>
-              Visualização de revisão — <strong style={{ color: "rgba(255,255,255,0.45)" }}>somente leitura</strong>. Nenhuma alteração pode ser feita aqui.
-            </p>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] }} style={{ borderRadius: 20, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)", background: "#fff", position: "relative" }}>
-            <div style={{ height: 3, background: `linear-gradient(to right, ${ORANGE}80, transparent)` }} />
-            <div style={{ width: "100%", aspectRatio: "800 / 1122", minHeight: 500, position: "relative" }}>
-              <iframe
-                srcDoc={previewHtml}
-                title="Revisão do Contrato"
-                sandbox="allow-same-origin"
-                style={{ width: "100%", height: "100%", border: "none", display: "block", pointerEvents: "none" }}
-              />
-              <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "transparent", cursor: "default" }} />
-            </div>
-          </motion.div>
-
-          <p style={{ textAlign: "center", fontSize: 9, color: "rgba(255,255,255,0.12)", paddingTop: 24, letterSpacing: "0.04em" }}>
-            Revisão gerada eletronicamente via Fechou! — Plataforma de Gestão para Freelancers
-          </p>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// COMPONENTE PRINCIPAL — /p/contract/:token
+// COMPONENTE PRINCIPAL — /c/:token (compatível com /p/contract/:token)
 // ═════════════════════════════════════════════════════════════════════════════
 
 export default function PublicContract() {
-  const [location] = useLocation();
-
-  // ── Detecta modo revisão ──────────────────────────────────────────────────
-  if (location.startsWith("/p/review/")) {
-    const token = location.slice("/p/review/".length).split("?")[0].trim();
-    if (token) return <ReviewMode token={token} />;
-  }
-
-  // ── Modo assinatura ───────────────────────────────────────────────────────
   const [, contractParams] = useRoute("/p/contract/:token");
-  const token = contractParams?.token ?? (
-    location.startsWith("/p/contract/")
-      ? location.slice("/p/contract/".length).split("?")[0].trim()
-      : null
-  );
+  const [, shortParams] = useRoute("/c/:token");
+  const rawToken = (contractParams?.token ?? shortParams?.token ?? "").trim();
+  const token = /^[a-f0-9]{64}$/i.test(rawToken) ? rawToken.toLowerCase() : null;
 
   const queryClient                   = useQueryClient();
   const [showRating, setShowRating]   = useState(false);
@@ -885,6 +713,20 @@ export default function PublicContract() {
                             style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 9, padding: "10px 13px", color: "#fff", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
                           {errors.signerDocument && <p style={{ fontSize: 11, color: "#f87171", margin: "5px 0 0" }}>{errors.signerDocument.message}</p>}
                         </div>
+                      </div>
+
+                      <div>
+                        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11, color: "rgba(255,255,255,0.55)", lineHeight: 1.5 }}>
+                          <input
+                            type="checkbox"
+                            {...register("acceptTerms")}
+                            style={{ marginTop: 2, accentColor: ORANGE }}
+                          />
+                          <span>
+                            Li e aceito os termos deste contrato e concordo com a assinatura digital.
+                          </span>
+                        </label>
+                        {errors.acceptTerms && <p style={{ fontSize: 11, color: "#f87171", margin: "6px 0 0" }}>{errors.acceptTerms.message}</p>}
                       </div>
 
                       <motion.button type="submit"
