@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Link, useParams } from "wouter";
 import { generateShareLink } from "../service/proposals";
 import { toast } from "sonner";
+import { toAppAbsoluteUrl } from "../lib/public-url";
 
 interface ContractData {
   id: string;
@@ -44,7 +45,7 @@ export default function ContratoView() {
     const tokenFromPath = (data.publicUrlPath ?? "").match(/([a-f0-9]{64})/i)?.[1];
     const token = (tokenFromPath ?? data.shareToken ?? "").trim();
     if (!/^[a-f0-9]{64}$/i.test(token)) throw new Error("Token público inválido para compartilhamento.");
-    return `${window.location.origin}/p/contract/${token.toLowerCase()}`;
+    return toAppAbsoluteUrl(`/p/contract/${token.toLowerCase()}`);
   };
 
   return (

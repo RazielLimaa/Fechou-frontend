@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { toast } from "sonner";
+import { toAppAbsoluteUrl } from "../../lib/public-url";
 import {
   ExternalLink,
   FileText,
@@ -26,7 +27,7 @@ function toContractSigningPath(shareLink: string) {
   const token = trimmed.match(/([a-f0-9]{64})/i)?.[1];
   if (!token) return trimmed;
 
-  return `${window.location.origin}/p/contract/${token.toLowerCase()}`;
+  return toAppAbsoluteUrl(`/p/contract/${token.toLowerCase()}`);
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
