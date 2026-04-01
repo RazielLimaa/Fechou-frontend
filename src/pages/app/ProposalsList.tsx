@@ -19,6 +19,16 @@ import {
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
+function toContractSigningPath(shareLink: string) {
+  const trimmed = shareLink.trim();
+  if (!trimmed) return trimmed;
+
+  const token = trimmed.match(/([a-f0-9]{64})/i)?.[1];
+  if (!token) return trimmed;
+
+  return `${window.location.origin}/p/contract/${token.toLowerCase()}`;
+}
+
 const statusConfig: Record<string, { label: string; className: string }> = {
   pending: {
     label: "Pendente",
@@ -58,7 +68,7 @@ export default function ProposalsList() {
   const shareMutation = useMutation({
     mutationFn: (id: string) => proposalsService.generateShareLink(id),
     onSuccess: (data) => {
-      navigator.clipboard.writeText(data.shareLink);
+      navigator.clipboard.writeText(toContractSigningPath(data.shareLink));
       toast.success("Link do contrato copiado!");
     },
     onError: (err: Error) => {
