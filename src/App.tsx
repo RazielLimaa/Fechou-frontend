@@ -84,8 +84,9 @@ function Router() {
         <PrivateRoute component={PaymentSettings} />
       </Route>
       <Route path="/p/contract/:token" component={PublicContract} />
+      <Route path="/c/:token" component={PublicContract} />
       <Route path="/p/feedback" component={PaymentFeedback} />
-      <Route path="/c/:token" component={ContratoPublico} />
+      <Route path="/legacy-c/:token" component={ContratoPublico} />
 
 
       <Route path="/profile" component={perfil} />  

@@ -45,7 +45,7 @@ export default function ContratoView() {
     const tokenFromPath = (data.publicUrlPath ?? "").match(/([a-f0-9]{64})/i)?.[1];
     const token = (tokenFromPath ?? data.shareToken ?? "").trim();
     if (!/^[a-f0-9]{64}$/i.test(token)) throw new Error("Token público inválido para compartilhamento.");
-    return toAppAbsoluteUrl(`/p/contract/${token.toLowerCase()}`);
+    return toAppAbsoluteUrl(`/c/${token.toLowerCase()}`);
   };
 
   return (

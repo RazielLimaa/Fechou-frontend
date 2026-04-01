@@ -3,7 +3,7 @@
  *                      + botão "Ver Contrato" antes de assinar
  *
  * Fluxo público:
- *  /p/contract/:token  → ver preview no modal → assinar → pagar → avaliar
+ *  /c/:token (ou /p/contract/:token) → ver preview no modal → assinar → pagar → avaliar
  */
 
 import { useState, useEffect } from "react";
@@ -466,12 +466,13 @@ function ContractPreviewModal({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// COMPONENTE PRINCIPAL — /p/contract/:token
+// COMPONENTE PRINCIPAL — /c/:token (compatível com /p/contract/:token)
 // ═════════════════════════════════════════════════════════════════════════════
 
 export default function PublicContract() {
   const [, contractParams] = useRoute("/p/contract/:token");
-  const rawToken = contractParams?.token?.trim() ?? "";
+  const [, shortParams] = useRoute("/c/:token");
+  const rawToken = (contractParams?.token ?? shortParams?.token ?? "").trim();
   const token = /^[a-f0-9]{64}$/i.test(rawToken) ? rawToken.toLowerCase() : null;
 
   const queryClient                   = useQueryClient();

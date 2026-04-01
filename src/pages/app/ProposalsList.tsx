@@ -27,7 +27,7 @@ function toContractSigningPath(shareLink: string) {
   const token = trimmed.match(/([a-f0-9]{64})/i)?.[1];
   if (!token) return trimmed;
 
-  return toAppAbsoluteUrl(`/p/contract/${token.toLowerCase()}`);
+  return toAppAbsoluteUrl(`/c/${token.toLowerCase()}`);
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {

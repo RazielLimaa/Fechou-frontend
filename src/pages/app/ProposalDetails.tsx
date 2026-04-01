@@ -32,7 +32,7 @@ const formatCurrency = (value: number) =>
 function toContractSigningUrl(shareLink: string) {
   const trimmed = shareLink.trim();
   const token = trimmed.match(/([a-f0-9]{64})/i)?.[1];
-  return token ? toAppAbsoluteUrl(`/p/contract/${token.toLowerCase()}`) : trimmed;
+  return token ? toAppAbsoluteUrl(`/c/${token.toLowerCase()}`) : trimmed;
 }
 
 function CopyLinkField({ value }: { value: string }) {

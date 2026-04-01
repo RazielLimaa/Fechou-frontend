@@ -292,7 +292,7 @@ function toContractSigningPath(data: { publicUrlPath?: string; shareToken?: stri
     normalizedPath.match(/\/p\/(?:contract|review)\/([a-f0-9]{64})/i)?.[1]
     ?? normalizedPath.match(/([a-f0-9]{64})/i)?.[1];
   const token = (pathToken ?? data.shareToken ?? "").trim();
-  if (/^[a-f0-9]{64}$/i.test(token)) return `/p/contract/${token.toLowerCase()}`;
+  if (/^[a-f0-9]{64}$/i.test(token)) return `/c/${token.toLowerCase()}`;
   return normalizedPath || null;
 }
 
