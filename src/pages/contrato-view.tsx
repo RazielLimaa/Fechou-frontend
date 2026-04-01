@@ -40,6 +40,13 @@ export default function ContratoView() {
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
+  const toSigningUrl = (data: { publicUrlPath?: string; shareToken?: string }) => {
+    const tokenFromPath = (data.publicUrlPath ?? "").match(/([a-f0-9]{64})/i)?.[1];
+    const token = (tokenFromPath ?? data.shareToken ?? "").trim();
+    if (!/^[a-f0-9]{64}$/i.test(token)) throw new Error("Token público inválido para compartilhamento.");
+    return `${window.location.origin}/p/contract/${token.toLowerCase()}`;
+  };
+
   return (
     <div className="min-h-screen bg-white text-black p-8 md:p-20 font-serif">
       <div className="max-w-[800px] mx-auto bg-white shadow-2xl border border-gray-100 p-12 md:p-24 relative overflow-hidden">
@@ -154,7 +161,7 @@ export default function ContratoView() {
             try {
               if (!id) return;
               const res = await generateShareLink(Number(id));
-              const url = `${window.location.origin}/c/${res.shareToken}`;
+              const url = toSigningUrl(res);
               await navigator.clipboard.writeText(url);
               toast.success("Link do contrato copiado com sucesso!");
               

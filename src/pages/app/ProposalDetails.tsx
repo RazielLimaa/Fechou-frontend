@@ -28,6 +28,12 @@ import {
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
+function toContractSigningUrl(shareLink: string) {
+  const trimmed = shareLink.trim();
+  const token = trimmed.match(/([a-f0-9]{64})/i)?.[1];
+  return token ? `${window.location.origin}/p/contract/${token.toLowerCase()}` : trimmed;
+}
+
 function CopyLinkField({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -327,7 +333,7 @@ export default function ProposalDetails() {
                       )}
                       {isPaymentConfigured ? "Gerar Link do Contrato" : "Configure o PIX primeiro"}
                     </Button>
-                    {shareMutation.data && <CopyLinkField value={shareMutation.data.shareLink} />}
+                    {shareMutation.data && <CopyLinkField value={toContractSigningUrl(shareMutation.data.shareLink)} />}
                   </div>
 
                   <div className="w-full h-px bg-white/5" />
