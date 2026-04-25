@@ -1,0 +1,1 @@
+function e(){return`${window.location.origin}${`/`.endsWith(`/`)?`/`:`//`}`}function t(t){let n=t.replace(/^\/+/,``);return new URL(n,e()).toString()}export{t};
