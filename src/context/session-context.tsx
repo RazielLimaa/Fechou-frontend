@@ -10,7 +10,7 @@ import {
   type AuthUser,
 } from "../service/api/auth";
 
-type SessionStatus = "loading" | "authenticated" | "unauthenticated";
+type SessionStatus = "loading" | "authenticated" | "guest";
 
 type SessionContextType = {
   status: SessionStatus;
@@ -31,44 +31,67 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
 
+  const applyAuthenticated = useCallback((nextUser: AuthUser) => {
+    setUser(nextUser);
+    setStatus("authenticated");
+  }, []);
+
   const clearSession = useCallback(() => {
     setUser(null);
-    setStatus("unauthenticated");
+    setStatus("guest");
   }, []);
 
   const refreshSession = useCallback(async () => {
     try {
-      const data = await me();
-      setUser(data);
-      setStatus("authenticated");
+      const currentUser = await me();
+      if (currentUser) {
+        applyAuthenticated(currentUser);
+        return;
+      }
+
+      const refreshed = await refresh();
+      if (refreshed?.user) {
+        applyAuthenticated(refreshed.user);
+        return;
+      }
+
+      clearSession();
     } catch {
       clearSession();
     }
-  }, [clearSession]);
+  }, [applyAuthenticated, clearSession]);
 
   const loginAction = useCallback(async (email: string, password: string) => {
-    await login(email, password);
-    await refreshSession();
-  }, [refreshSession]);
+    const response = await login(email, password);
+    applyAuthenticated(response.user);
+  }, [applyAuthenticated]);
 
   const registerAction = useCallback(async (name: string, email: string, password: string) => {
-    await register(name, email, password);
-    await refreshSession();
-  }, [refreshSession]);
+    const response = await register(name, email, password);
+    applyAuthenticated(response.user);
+  }, [applyAuthenticated]);
 
   const googleAction = useCallback(async (code: string, redirectUri?: string) => {
-    await loginWithGoogle(code, redirectUri);
-    await refreshSession();
-  }, [refreshSession]);
+    const response = await loginWithGoogle(code, redirectUri);
+    applyAuthenticated(response.user);
+  }, [applyAuthenticated]);
 
   const refreshAction = useCallback(async () => {
-    await refresh();
-    await refreshSession();
-  }, [refreshSession]);
+    const response = await refresh();
+    if (response?.user) {
+      applyAuthenticated(response.user);
+      return;
+    }
+
+    clearSession();
+  }, [applyAuthenticated, clearSession]);
 
   const logoutAction = useCallback(async () => {
-    await logout();
-    clearSession();
+    try {
+      await logout();
+    } finally {
+      clearSession();
+    }
   }, [clearSession]);
 
   const csrfAction = useCallback(async () => {

@@ -4,8 +4,9 @@ import { motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { mercadoPagoService, isPixConfigured } from "../../services/mercadoPago";
-import { runWithStepUp } from "../../service/step-up";
+import { isStepUpCancelledError, runWithStepUp } from "../../service/step-up";
 import { toUiErrorMessage } from "../../lib/api-error";
+import { getCpfCnpjValidationMessage, normalizeCpfCnpjDigits } from "../../lib/cpf-cnpj";
 import type {
   MercadoPagoStatusResponse,
   VerifyApiKeyResponse,
@@ -141,6 +142,9 @@ function maskPixKey(key: string, type: string | null | undefined): string {
 function validatePixKey(key: string, type: PixKeyType): string | null {
   const trimmed = key.trim();
   if (!trimmed) return "Informe sua chave PIX.";
+  if ((["cpf", "cnpj"] as PixKeyType[]).includes(type)) {
+    return getCpfCnpjValidationMessage(trimmed, type.toUpperCase());
+  }
 
   switch (type) {
     case "cpf": {
@@ -190,7 +194,7 @@ export default function PaymentSettingsPage() {
 
   const savePixMutation = useMutation({
     mutationFn: ({ key, type }: { key: string; type: string }) =>
-      runWithStepUp("user.pix.update", { keyType: type }, (stepUpToken) => mercadoPagoService.savePixKey(key, type, stepUpToken)),
+      runWithStepUp("user.pix.update", undefined, (stepUpToken) => mercadoPagoService.savePixKey(key, type, stepUpToken)),
     onSuccess: (savedPix) => {
       queryClient.setQueryData(["pix-key"], savedPix);
       queryClient.invalidateQueries({ queryKey: ["pix-key"] });
@@ -199,6 +203,7 @@ export default function PaymentSettingsPage() {
       toast.success("Chave PIX cadastrada com sucesso!");
     },
     onError: (err: unknown) => {
+      if (isStepUpCancelledError(err)) return;
       toast.error(toUiErrorMessage(err));
     },
   });
@@ -212,6 +217,7 @@ export default function PaymentSettingsPage() {
       toast.success("Chave PIX removida.");
     },
     onError: (err: unknown) => {
+      if (isStepUpCancelledError(err)) return;
       toast.error(toUiErrorMessage(err));
     },
   });
@@ -223,7 +229,11 @@ export default function PaymentSettingsPage() {
       toast.error(validationError);
       return;
     }
-    savePixMutation.mutate({ key: trimmed, type: pixKeyType });
+    const keyToSubmit =
+      pixKeyType === "cpf" || pixKeyType === "cnpj"
+        ? normalizeCpfCnpjDigits(trimmed, pixKeyType.toUpperCase())
+        : trimmed;
+    savePixMutation.mutate({ key: keyToSubmit, type: pixKeyType });
   };
 
   const handlePixCopy = () => {

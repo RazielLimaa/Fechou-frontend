@@ -1,5 +1,6 @@
 import { authStorage } from "../../lib/auth-storage";
-import { apiFetch } from "../api";
+import { clearCsrfToken } from "../../lib/csrf";
+import { apiFetch, ApiError } from "../api";
 
 export type AuthUser = {
   id: string | number;
@@ -10,6 +11,7 @@ export type AuthUser = {
 
 export type AuthResponse = { token?: string; user: AuthUser };
 export type CsrfResponse = { csrfToken?: string };
+export type AuthMessageResponse = { ok: boolean; message: string };
 
 const API_PREFIX = "/api/auth";
 
@@ -43,15 +45,42 @@ export function loginWithGoogle(code: string, redirectUri?: string) {
   }).then(persistSession);
 }
 
-export function me() {
-  return apiFetch<AuthUser>(`${API_PREFIX}/me`, { method: "GET" });
+export async function me(): Promise<AuthUser | null> {
+  try {
+    return await apiFetch<AuthUser>(`${API_PREFIX}/me`, {
+      method: "GET",
+      skipAuthRefresh: true,
+      authMode: "optional",
+      retry429: 0,
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      return null;
+    }
+
+    throw err;
+  }
 }
 
-export function refresh() {
-  return apiFetch<AuthResponse>(`${API_PREFIX}/refresh`, {
-    method: "POST",
-    skipAuthRefresh: true,
-  }).then(persistSession);
+export async function refresh(): Promise<AuthResponse | null> {
+  try {
+    const response = await apiFetch<AuthResponse>(`${API_PREFIX}/refresh`, {
+      method: "POST",
+      skipAuthRefresh: true,
+      authMode: "optional",
+      retry429: 0,
+    });
+
+    return persistSession(response);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      authStorage.clearAll();
+      clearCsrfToken();
+      return null;
+    }
+
+    throw err;
+  }
 }
 
 export function logout() {
@@ -60,6 +89,7 @@ export function logout() {
     skipAuthRefresh: true,
   }).finally(() => {
     authStorage.clearAll();
+    clearCsrfToken();
   });
 }
 
@@ -68,5 +98,25 @@ export function getCsrf() {
     method: "GET",
     skipAuthRefresh: true,
     skipCsrf: true,
+  });
+}
+
+export function forgotPassword(email: string) {
+  return apiFetch<AuthMessageResponse>(`${API_PREFIX}/forgot-password`, {
+    method: "POST",
+    json: { email },
+    skipAuthRefresh: true,
+    authMode: "optional",
+    retry429: 0,
+  });
+}
+
+export function resetPassword(token: string, password: string) {
+  return apiFetch<AuthMessageResponse>(`${API_PREFIX}/reset-password`, {
+    method: "POST",
+    json: { token, password },
+    skipAuthRefresh: true,
+    authMode: "optional",
+    retry429: 0,
   });
 }

@@ -1,11 +1,12 @@
 import { QueryClient, type QueryFunction } from "@tanstack/react-query";
 import { authStorage } from "./auth-storage";
+import { getSafeHttpErrorMessage } from "./http-error";
 
 function getAuthToken(): string | null {
   return authStorage.getAccessToken();
 }
 
-function buildHeaders(hasJsonBody: boolean): HeadersInit {
+function buildHeaders(hasJsonBody: boolean, extraHeaders?: Record<string, string>): HeadersInit {
   const token = getAuthToken();
 
   const headers: Record<string, string> = {
@@ -17,22 +18,34 @@ function buildHeaders(hasJsonBody: boolean): HeadersInit {
   if (hasJsonBody) headers["Content-Type"] = "application/json";
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  return headers;
+  return {
+    ...headers,
+    ...(extraHeaders ?? {}),
+  };
 }
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    const contentType = res.headers.get("content-type") ?? "";
+    const payload = contentType.includes("application/json")
+      ? await res.json().catch(() => null)
+      : (await res.text().catch(() => "")) || res.statusText;
+
+    throw new Error(getSafeHttpErrorMessage(res.status, payload));
   }
 }
 
-export async function apiRequest(method: string, url: string, data?: unknown | undefined): Promise<Response> {
+export async function apiRequest(
+  method: string,
+  url: string,
+  data?: unknown | undefined,
+  options?: { headers?: Record<string, string> },
+): Promise<Response> {
   const hasBody = data !== undefined;
 
   const res = await fetch(url, {
     method,
-    headers: buildHeaders(hasBody),
+    headers: buildHeaders(hasBody, options?.headers),
     body: hasBody ? JSON.stringify(data) : undefined,
     credentials: "include",
   });

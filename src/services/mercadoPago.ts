@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { normalizeCpfCnpjDigits } from "../lib/cpf-cnpj";
 
 export interface MercadoPagoStatusResponse {
   connected: boolean;
@@ -150,8 +151,10 @@ export const mercadoPagoService = {
    */
   savePixKey: async (pixKey: string, pixKeyType: string, stepUpToken?: string): Promise<PixKeyResponse> => {
     // Sanitiza antes de enviar — remove espaços e limita tamanho
-    const cleanKey  = pixKey.trim().slice(0, 140);
     const cleanType = pixKeyType.trim().slice(0, 20);
+    const cleanKey  = (cleanType === "cpf" || cleanType === "cnpj"
+      ? normalizeCpfCnpjDigits(pixKey, cleanType.toUpperCase())
+      : pixKey.trim()).slice(0, 140);
 
     if (!cleanKey)  throw new Error("Chave PIX não pode ser vazia.");
     if (!cleanType) throw new Error("Tipo da chave PIX não informado.");

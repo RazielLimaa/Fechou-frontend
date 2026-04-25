@@ -1,4 +1,10 @@
 import { apiRequest } from "../lib/queryClient";
+import { getSafeHttpErrorMessage } from "../lib/http-error";
+import {
+  getActiveFechouLocale,
+  getFechouLocaleHeaders,
+  type FechouLocale,
+} from "../i18n/locale";
 
 export type Tone = "curto" | "consultivo" | "direto";
 
@@ -29,6 +35,30 @@ export type CopilotTodayResponse = {
   };
 };
 
+export type CopilotDiagnosisResponse = Record<string, unknown>;
+export type CopilotTipsResponse = Record<string, unknown>;
+export type CopilotProposalAnalysisResponse = Record<string, unknown>;
+export type CopilotProposalApproachesResponse = Record<string, unknown>;
+
+function safeProposalId(proposalId: number): string {
+  if (!Number.isInteger(proposalId) || proposalId <= 0) {
+    throw new Error("ID de proposta invalido.");
+  }
+
+  return String(proposalId);
+}
+
+function copilotRequest(
+  method: string,
+  url: string,
+  locale: FechouLocale = getActiveFechouLocale(),
+  data?: unknown,
+) {
+  return apiRequest(method, url, data, {
+    headers: getFechouLocaleHeaders(locale),
+  });
+}
+
 async function parseJsonSafe<T>(res: Response): Promise<T> {
   const text = await res.text();
   const looksHtml = text.trim().toLowerCase().startsWith("<!doctype");
@@ -48,31 +78,68 @@ async function parseJsonSafe<T>(res: Response): Promise<T> {
 
 async function throwIfNotOk(res: Response): Promise<void> {
   if (res.ok) return;
-  let msg = `HTTP ${res.status}`;
+  let payload: unknown = null;
   try {
-    const data = await parseJsonSafe<any>(res);
-    msg = data?.message || data?.error || msg;
+    payload = await parseJsonSafe<any>(res);
   } catch {}
-  const err: any = new Error(msg);
+  const err: any = new Error(getSafeHttpErrorMessage(res.status, payload));
   err.status = res.status;
   throw err;
 }
 
 export const copilotService = {
-  async getTodayActions(): Promise<CopilotTodayResponse> {
-    const res = await apiRequest("GET", "/api/copilot/today");
+  async getTodayActions(locale?: FechouLocale): Promise<CopilotTodayResponse> {
+    const res = await copilotRequest("GET", "/api/copilot/today", locale);
     await throwIfNotOk(res);
     return parseJsonSafe<CopilotTodayResponse>(res);
   },
 
+  async getDiagnosis(locale?: FechouLocale): Promise<CopilotDiagnosisResponse> {
+    const res = await copilotRequest("GET", "/api/copilot/diagnosis", locale);
+    await throwIfNotOk(res);
+    return parseJsonSafe<CopilotDiagnosisResponse>(res);
+  },
+
+  async getTips(locale?: FechouLocale): Promise<CopilotTipsResponse> {
+    const res = await copilotRequest("GET", "/api/copilot/tips", locale);
+    await throwIfNotOk(res);
+    return parseJsonSafe<CopilotTipsResponse>(res);
+  },
+
+  async analyzeProposal(
+    proposalId: number,
+    locale?: FechouLocale,
+  ): Promise<CopilotProposalAnalysisResponse> {
+    const res = await copilotRequest(
+      "GET",
+      `/api/copilot/proposals/${safeProposalId(proposalId)}/analyze`,
+      locale,
+    );
+    await throwIfNotOk(res);
+    return parseJsonSafe<CopilotProposalAnalysisResponse>(res);
+  },
+
+  async getProposalApproaches(
+    proposalId: number,
+    locale?: FechouLocale,
+  ): Promise<CopilotProposalApproachesResponse> {
+    const res = await copilotRequest(
+      "GET",
+      `/api/copilot/proposals/${safeProposalId(proposalId)}/approaches`,
+      locale,
+    );
+    await throwIfNotOk(res);
+    return parseJsonSafe<CopilotProposalApproachesResponse>(res);
+  },
+
   async markAsDone(proposalId: number): Promise<{ ok: boolean }> {
-    const res = await apiRequest("POST", `/api/copilot/actions/${proposalId}/done`);
+    const res = await copilotRequest("POST", `/api/copilot/actions/${safeProposalId(proposalId)}/done`);
     await throwIfNotOk(res);
     return parseJsonSafe<{ ok: boolean }>(res);
   },
 
   async dismissAction(proposalId: number): Promise<{ ok: boolean }> {
-    const res = await apiRequest("POST", `/api/copilot/actions/${proposalId}/dismiss`);
+    const res = await copilotRequest("POST", `/api/copilot/actions/${safeProposalId(proposalId)}/dismiss`);
     await throwIfNotOk(res);
     return parseJsonSafe<{ ok: boolean }>(res);
   },
