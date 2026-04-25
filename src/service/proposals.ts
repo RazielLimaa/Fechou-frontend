@@ -62,15 +62,15 @@ export function getProposalById(id: number): Promise<ApiProposal> {
 }
 
 
-export function createProposal(...args: [input: {
+export function createProposal(input: {
   title: string;
   clientName: string;
   description: string;
   value: number;
-}]): Promise<ApiProposal> {
+}): Promise<ApiProposal> {
   return apiFetch<ApiProposal>("/api/proposals", {
     method: "POST",
-    body: JSON.stringify(oninput),
+    json: input,
   });
 }
 
@@ -88,17 +88,21 @@ export function generateShareLink(
 }
 
 export function getPublicProposal(token: string): Promise<ApiProposal> {
-  return apiFetch<ApiProposal>(`/api/proposals/public/${token}`);
+  return apiFetch<ApiProposal>(`/api/proposals/public/${safePublicToken(token)}`, {
+    cache: "no-store",
+    authMode: "optional",
+  });
 }
 
 export function signProposal(token: string, data: SignProposalPayload): Promise<SignProposalResponse> {
   const signerName = validateSignerName(data.signerName);
   const signerDocument = normalizeSignerDocument(data.signerDocument);
   const signatureDataUrl = validateSignatureDataUrl(data.signatureDataUrl);
+  const safePayload = { signerName, signerDocument, signatureDataUrl };
 
   return apiFetch<SignProposalResponse>(`/api/proposals/public/${safePublicToken(token)}/sign`, {
     method: "POST",
-    body: JSON.stringify(data),
+    json: safePayload,
     headers: {
       "Idempotency-Key": `public-sign-${Date.now()}`,
     },

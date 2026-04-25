@@ -102,6 +102,30 @@ body {
   overflow-x: hidden;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #ff6600 #050505;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #ff6600;
+  border: 2px solid #050505;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #ff7a1a;
+}
+
 .noise-overlay {
   position: fixed;
   inset: 0;

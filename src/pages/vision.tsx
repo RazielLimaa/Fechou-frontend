@@ -26,16 +26,28 @@
 
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef, useState, useEffect, useCallback } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useTranslation } from "react-i18next";
 import Navbar from "../components/landing/Navbar";
 import Footer from "../components/landing/Footer";
 import Phone3D from "../components/Phone3D";
 import { ArrowRight, Target, Rocket, Eye } from "lucide-react";
 import { Link } from "wouter";
 
+gsap.registerPlugin(ScrollTrigger);
+
+type VisionPhoneStep = { num: string; tag: string; title: string; body: string };
+type VisionStat = { num: string; label: string };
+type VisionNextStep = { tag: string; text: string };
+type VisionPillarCopy = { number: string; title: string; subtitle: string; description: string };
+type VisionManifestoNote = { t: string; strong: boolean };
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PhonePinnedSection — scroll-lock robusto com Lenis
 // ─────────────────────────────────────────────────────────────────────────────
 function PhonePinnedSection() {
+  const { t } = useTranslation();
   const sectionRef     = useRef<HTMLDivElement>(null);
   const progressRef    = useRef(0);
   const activeRef      = useRef(false);
@@ -57,17 +69,51 @@ function PhonePinnedSection() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+
+    const ctx = gsap.context(() => {
+      ScrollTrigger.create({
+        trigger: section,
+        start: "top top",
+        end: "+=1700",
+        pin: true,
+        scrub: 0.65,
+        anticipatePin: 1,
+        invalidateOnRefresh: true,
+        onUpdate: (self) => {
+          const next = Math.min(1, Math.max(0, self.progress));
+          setProgress(next);
+          setActive(self.isActive && next < 0.985);
+          setDone(next >= 0.985);
+        },
+        onEnter: () => setActive(true),
+        onEnterBack: () => {
+          setActive(true);
+          setDone(false);
+        },
+        onLeave: () => {
+          setActive(false);
+          setDone(true);
+        },
+        onLeaveBack: () => {
+          setActive(false);
+          setDone(false);
+          setProgress(0);
+        },
+      });
+    }, section);
+
+    return () => ctx.revert();
+  }, []);
+
   // ── derivações de progresso ─────────────────────────────────────────────────
   const cp   = Math.min(1, Math.max(0, progress / 0.45));
   const sp   = Math.min(1, Math.max(0, (progress - 0.45) / 0.4));
   const step = progress < 0.12 ? 0 : progress < 0.45 ? 1 : progress < 0.78 ? 2 : 3;
 
-  const steps = [
-    { num: "01", tag: "Template",   title: "Escolha o contrato",       body: "Dezenas de modelos para design, dev, foto e mais. Sua marca em segundos." },
-    { num: "02", tag: "Proposta",   title: "Preencha e gere o PDF",    body: "Escopo, prazo, valor e cláusulas num formulário intuitivo. PDF profissional na hora." },
-    { num: "03", tag: "Assinatura", title: "Cliente assina pelo link", body: "Sem app, sem burocracia. Validade jurídica. Notificação em tempo real." },
-    { num: "04", tag: "PIX",        title: "Fechou! Receba na hora",   body: "Pagamento liberado direto na sua chave após a assinatura. Sem intermediários." },
-  ];
+  const steps = t("visionPage.phone.steps", { returnObjects: true }) as VisionPhoneStep[];
 
   // ── lock / unlock do Lenis + overflow ──────────────────────────────────────
   const lockScroll = useCallback(() => {
@@ -91,22 +137,9 @@ function PhonePinnedSection() {
     if (next >= 1 && !doneRef.current) {
       doneRef.current = true;
       setDone(true);
-      setTimeout(() => {
-        activeRef.current = false;
-        setActive(false);
-        unlockScroll();
-        // Scroll suave Lenis até o próximo conteúdo
-        const lenis = (window as any).__lenis;
-        const el = sectionRef.current;
-        if (lenis && el) {
-          lenis.scrollTo(el.offsetTop + el.offsetHeight, {
-            duration: 1.2,
-            easing: (t: number) => 1 - Math.pow(1 - t, 4),
-          });
-        } else if (el) {
-          window.scrollTo({ top: el.offsetTop + el.offsetHeight, behavior: "smooth" });
-        }
-      }, 1400);
+      activeRef.current = false;
+      setActive(false);
+      unlockScroll();
     }
   }, [unlockScroll]);
 
@@ -123,25 +156,8 @@ function PhonePinnedSection() {
 
   // ── ativar seção com snap suave via Lenis ───────────────────────────────────
   const activateSection = useCallback(() => {
-    if (activeRef.current || doneRef.current) return;
-    const el = sectionRef.current;
-    if (!el) return;
-
-    activeRef.current = true;
-    setActive(true);
-
-    const lenis = (window as any).__lenis;
-    if (lenis) {
-      lenis.scrollTo(el.offsetTop, {
-        duration: 0.55,
-        easing: (t: number) => 1 - Math.pow(1 - t, 3),
-        onComplete: () => lockScroll(),
-      });
-    } else {
-      window.scrollTo({ top: el.offsetTop, behavior: "smooth" });
-      lockScroll();
-    }
-  }, [lockScroll]);
+    // O fluxo agora é controlado pelo GSAP ScrollTrigger, sem scroll-lock manual.
+  }, []);
 
   // ── IntersectionObserver: detecta entrada robustamente ─────────────────────
   useEffect(() => {
@@ -258,7 +274,7 @@ function PhonePinnedSection() {
 
       {/* Label topo */}
       <div style={{ position: "relative", zIndex: 1, textAlign: "center", paddingTop: "clamp(12px,3vh,36px)", flexShrink: 0 }}>
-        <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.28em", color: "#ff6600", margin: 0 }}>◈ Veja na prática</p>
+        <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.28em", color: "#ff6600", margin: 0 }}>◈ {t("visionPage.phone.eyebrow")}</p>
       </div>
 
       {/* ── DESKTOP ── */}
@@ -280,7 +296,17 @@ function PhonePinnedSection() {
           </div>
 
           {/* centro: phone */}
-          <div style={{ position: "relative", flexShrink: 0 }}>
+          <div
+            style={{
+              position: "relative",
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transform: "scale(0.68)",
+              transformOrigin: "center",
+            }}
+          >
             <motion.div
               animate={done ? { opacity: 0.9 } : { opacity: [0.3, 0.65, 0.3] }}
               transition={done ? { duration: 0.7 } : { duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
@@ -308,19 +334,9 @@ function PhonePinnedSection() {
               </div>
             ))}
 
-            <motion.div animate={{ opacity: done ? 0 : active ? 1 : 0.3 }} style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
-              <motion.div animate={{ y: [0, 5, 0] }} transition={{ duration: 1.3, repeat: Infinity, ease: "easeInOut" }}>
-                <svg width="12" height="18" viewBox="0 0 12 18" fill="none">
-                  <rect x="1" y="1" width="10" height="16" rx="5" stroke="rgba(255,255,255,0.22)" strokeWidth="1.3" />
-                  <motion.rect animate={{ y: [0, 5, 0] }} transition={{ duration: 1.3, repeat: Infinity }} x="5" y="4" width="2" height="3" rx="1" fill="rgba(255,255,255,0.3)" />
-                </svg>
-              </motion.div>
-              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", letterSpacing: "0.18em" }}>role para assinar</span>
-            </motion.div>
-
             <motion.div animate={{ opacity: done ? 1 : 0, y: done ? 0 : 10 }} transition={{ duration: 0.5 }} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <motion.div animate={{ scale: done ? [0.8, 1.3, 1] : 1 }} transition={{ duration: 0.5 }} style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 12px rgba(34,197,94,0.8)" }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#22c55e", letterSpacing: "-0.01em" }}>Contrato assinado!</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#22c55e", letterSpacing: "-0.01em" }}>{t("visionPage.phone.signed")}</span>
             </motion.div>
           </div>
         </div>
@@ -330,7 +346,7 @@ function PhonePinnedSection() {
       {isMobile && (
         <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 20px 0", minHeight: 0, overflow: "hidden" }}>
 
-          <div style={{ position: "relative", flexShrink: 0, transform: "scale(0.76)", transformOrigin: "top center", marginBottom: -20 }}>
+          <div style={{ position: "relative", flexShrink: 0, transform: "scale(0.54)", transformOrigin: "top center", marginBottom: -138 }}>
             <motion.div
               animate={done ? { opacity: 0.9 } : { opacity: [0.3, 0.65, 0.3] }}
               transition={done ? { duration: 0.7 } : { duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
@@ -365,18 +381,9 @@ function PhonePinnedSection() {
           </div>
 
           <div style={{ marginTop: 10, flexShrink: 0, height: 24, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
-            <motion.div animate={{ opacity: done ? 0 : active ? 1 : 0.4 }} style={{ display: "flex", alignItems: "center", gap: 6, position: "absolute" }}>
-              <motion.div animate={{ y: [0, 4, 0] }} transition={{ duration: 1.3, repeat: Infinity }}>
-                <svg width="10" height="15" viewBox="0 0 12 18" fill="none">
-                  <rect x="1" y="1" width="10" height="16" rx="5" stroke="rgba(255,255,255,0.22)" strokeWidth="1.3" />
-                  <motion.rect animate={{ y: [0, 5, 0] }} transition={{ duration: 1.3, repeat: Infinity }} x="5" y="4" width="2" height="3" rx="1" fill="rgba(255,255,255,0.3)" />
-                </svg>
-              </motion.div>
-              <span style={{ fontSize: 8, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", letterSpacing: "0.15em" }}>role para assinar</span>
-            </motion.div>
             <motion.div animate={{ opacity: done ? 1 : 0, y: done ? 0 : 8 }} transition={{ duration: 0.5 }} style={{ display: "flex", alignItems: "center", gap: 6, position: "absolute" }}>
               <motion.div animate={{ scale: done ? [0.8, 1.3, 1] : 1 }} transition={{ duration: 0.5 }} style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 10px rgba(34,197,94,0.8)" }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#22c55e" }}>Contrato assinado!</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#22c55e" }}>{t("visionPage.phone.signed")}</span>
             </motion.div>
           </div>
         </div>
@@ -385,6 +392,24 @@ function PhonePinnedSection() {
       {/* Barra de progresso */}
       <div style={{ position: "relative", zIndex: 1, height: 2, background: "rgba(255,255,255,0.05)", flexShrink: 0 }}>
         <motion.div style={{ height: "100%", background: "linear-gradient(90deg, #ff6600, rgba(255,102,0,0.3))", scaleX: progress, transformOrigin: "left" }} />
+      </div>
+
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          right: "clamp(16px, 4vw, 44px)",
+          bottom: "clamp(16px, 3vw, 32px)",
+          zIndex: 2,
+          fontSize: 9,
+          fontWeight: 700,
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: "rgba(255,255,255,0.22)",
+          pointerEvents: "none",
+        }}
+      >
+        {t("visionPage.phone.illustration")}
       </div>
     </div>
   );
@@ -413,16 +438,27 @@ function R({ children, delay = 0, className = "" }: { children: React.ReactNode;
 // Vision page
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Vision() {
+  const { t } = useTranslation();
   const containerRef = useRef(null);
   const { scrollYProgress } = useScroll({ target: containerRef, offset: ["start start", "end end"] });
   const heroOpacity = useTransform(scrollYProgress, [0, 0.15], [1, 0]);
   const heroScale   = useTransform(scrollYProgress, [0, 0.15], [1, 0.8]);
 
-  const pillars: Pillar[] = [
-    { number: "01", title: "Clareza",   subtitle: "", description: "Cada proposta, cada acordo, cada detalhe fica cristalino. Sem espaço para mal-entendidos.", icon: Eye,    gradient: "" },
-    { number: "02", title: "Confiança", subtitle: "", description: "Mostre ao cliente que existe método, organização e compromisso por trás de cada entrega.",  icon: Target, gradient: "" },
-    { number: "03", title: "Autonomia", subtitle: "", description: "Ferramentas que respeitam seu tempo, seu esforço e sua forma única de trabalhar.",           icon: Rocket, gradient: "" },
+  const pillarCopies = t("visionPage.pillars", { returnObjects: true }) as VisionPillarCopy[];
+  const pillarMeta = [
+    { icon: Eye, gradient: "" },
+    { icon: Target, gradient: "" },
+    { icon: Rocket, gradient: "" },
   ];
+  const pillars: Pillar[] = pillarCopies.map((copy, index) => ({
+    ...copy,
+    icon: pillarMeta[index]?.icon ?? Eye,
+    gradient: pillarMeta[index]?.gradient ?? "",
+  }));
+  const stats = t("visionPage.stats", { returnObjects: true }) as VisionStat[];
+  const nextSteps = t("visionPage.nextSteps", { returnObjects: true }) as VisionNextStep[];
+  const manifestoNotes = t("visionPage.manifestoNotes", { returnObjects: true }) as VisionManifestoNote[];
+  const ctaChips = t("visionPage.ctaChips", { returnObjects: true }) as string[];
 
   return (
     <div ref={containerRef} className="bg-background min-h-screen text-foreground selection:bg-accent selection:text-white overflow-hidden">
@@ -485,17 +521,17 @@ export default function Vision() {
         <div className="blur-blob bg-white/5 bottom-[-20%] left-[-10%] w-[600px] h-[600px]" />
         <motion.div style={{ opacity: heroOpacity, scale: heroScale }} className="relative z-10 text-center px-6">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-8">
-            <span className="inline-block px-6 py-2 rounded-full border border-accent/30 text-accent text-xs uppercase tracking-[0.3em] bg-accent/5 backdrop-blur-sm">Nossa Visão</span>
+            <span className="inline-block px-6 py-2 rounded-full border border-accent/30 text-accent text-xs uppercase tracking-[0.3em] bg-accent/5 backdrop-blur-sm">{t("visionPage.heroEyebrow")}</span>
           </motion.div>
           <motion.h1 initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.8 }}
             className="vis-hero-h1 font-display text-[15vw] md:text-[12rem] leading-[0.85] tracking-[-0.04em] mb-8">
-            <span className="text-reveal">VISION</span>
+            <span className="text-reveal">{t("visionPage.heroWord")}</span>
             <span className="text-accent italic">!</span>
           </motion.h1>
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }}
             className="text-xl md:text-3xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-            Não construímos apenas uma ferramenta.<br />
-            <span className="text-foreground font-normal">Construímos a estrutura da sua autonomia.</span>
+            {t("visionPage.heroLine1")}<br />
+            <span className="text-foreground font-normal">{t("visionPage.heroLine2")}</span>
           </motion.p>
         </motion.div>
       </section>
@@ -521,19 +557,19 @@ export default function Vision() {
           <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}
             style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "clamp(20px,4vh,40px)" }}>
             <span style={{ display: "inline-block", width: 28, height: 1, background: "#ff6600", flexShrink: 0 }} />
-            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.32em", color: "#ff6600" }}>Veja como funciona na prática</span>
+            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.32em", color: "#ff6600" }}>{t("visionPage.bridgeEyebrow")}</span>
           </motion.div>
 
           <div style={{ marginBottom: "clamp(28px,5vh,52px)" }}>
             <div style={{ fontSize: "clamp(28px,6.5vw,88px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.92 }}>
               <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}>
-                <span style={{ color: "#fff", textShadow: "0 0 80px rgba(255,110,0,0.45), -4px -2px 40px rgba(255,90,0,0.25)" }}>Enquanto você hesita,</span>
+                <span style={{ color: "#fff", textShadow: "0 0 80px rgba(255,110,0,0.45), -4px -2px 40px rgba(255,90,0,0.25)" }}>{t("visionPage.bridgeTitle1")}</span>
               </motion.div>
               <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}>
-                <span style={{ color: "#fff", textShadow: "0 0 60px rgba(255,110,0,0.35), -4px -2px 30px rgba(255,90,0,0.18)" }}>outro freelancer já</span>
+                <span style={{ color: "#fff", textShadow: "0 0 60px rgba(255,110,0,0.35), -4px -2px 30px rgba(255,90,0,0.18)" }}>{t("visionPage.bridgeTitle2")}</span>
               </motion.div>
               <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}>
-                <span style={{ color: "#ff6600", fontStyle: "italic", textShadow: "0 0 120px rgba(255,102,0,0.9), 0 0 60px rgba(255,130,0,0.7), -6px -3px 50px rgba(255,80,0,0.4)" }}>fechou o contrato.</span>
+                <span style={{ color: "#ff6600", fontStyle: "italic", textShadow: "0 0 120px rgba(255,102,0,0.9), 0 0 60px rgba(255,130,0,0.7), -6px -3px 50px rgba(255,80,0,0.4)" }}>{t("visionPage.bridgeTitle3")}</span>
               </motion.div>
             </div>
           </div>
@@ -541,15 +577,11 @@ export default function Vision() {
           <div className="vis-bridge-grid">
             <motion.div initial={{ opacity: 0, x: -18 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.65, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}>
               <p style={{ fontSize: "clamp(13px,1.5vw,17px)", color: "rgba(255,255,255,0.38)", lineHeight: 1.78, fontWeight: 300, marginBottom: 24 }}>
-                Cada proposta enviada no WhatsApp, cada "combinado" sem papel, cada projeto entregue sem contrato —
-                são <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>brechas que custam caro.</span>
+                {t("visionPage.bridgeBodyA")} —
+                <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 500 }}> {t("visionPage.bridgeBodyStrong")}</span>
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {[
-                  { num: "73%",   label: "dos freelancers já tomaram calote sem contrato" },
-                  { num: "4×",    label: "mais rápido fechar com proposta profissional" },
-                  { num: "0 seg", label: "para gerar seu primeiro contrato no Fechou!" },
-                ].map((s, i) => (
+                {stats.map((s, i) => (
                   <motion.div key={i} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.35 + i * 0.08 }}
                     style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <span style={{ fontSize: "clamp(16px,2vw,24px)", fontWeight: 900, color: "#ff6600", letterSpacing: "-0.03em", minWidth: 52, lineHeight: 1, flexShrink: 0 }}>{s.num}</span>
@@ -562,14 +594,9 @@ export default function Vision() {
             <div className="vis-bridge-divider" />
 
             <motion.div initial={{ opacity: 0, x: 18 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.65, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}>
-              <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "rgba(255,102,0,0.6)", marginBottom: 20 }}>O que acontece agora ↓</p>
+              <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "rgba(255,102,0,0.6)", marginBottom: 20 }}>{t("visionPage.nextEyebrow")}</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {[
-                  { tag: "01", text: "Você escolhe o template certo para o seu serviço" },
-                  { tag: "02", text: "Preenche escopo, prazo e valor — o PDF sai pronto" },
-                  { tag: "03", text: "O cliente assina pelo link, sem baixar nada" },
-                  { tag: "04", text: "Pagamento cai direto na sua chave PIX. Simples assim." },
-                ].map((item, i) => (
+                {nextSteps.map((item, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.45, delay: 0.4 + i * 0.07 }}
                     style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
                     <span style={{ fontSize: 9, fontWeight: 800, color: "#ff6600", letterSpacing: "0.1em", marginTop: 3, flexShrink: 0, opacity: 0.7 }}>{item.tag}</span>
@@ -577,25 +604,19 @@ export default function Vision() {
                   </motion.div>
                 ))}
               </div>
-              <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.75 }}
-                style={{ marginTop: 28, display: "flex", alignItems: "center", gap: 10 }}>
-                <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.4, repeat: Infinity }}
-                  style={{ width: 6, height: 6, borderRadius: "50%", background: "#ff6600", flexShrink: 0 }} />
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.22)", fontWeight: 300, letterSpacing: "0.04em" }}>Role para ver o processo completo ao vivo</span>
-              </motion.div>
             </motion.div>
           </div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, delay: 0.5 }}
             className="vis-bridge-foot">
             <p style={{ fontSize: "clamp(13px,2.2vw,22px)", fontWeight: 700, letterSpacing: "-0.03em", color: "rgba(255,255,255,0.12)", lineHeight: 1.35, maxWidth: 540 }}>
-              "Da conversa ao contrato assinado em{" "}
-              <span style={{ color: "rgba(255,102,0,0.55)", fontStyle: "italic" }}>menos de 3 minutos.</span>
-              {" "}Sem advogado. Sem burocracia. Sem desculpa."
+              {t("visionPage.quoteStart")}{" "}
+              <span style={{ color: "rgba(255,102,0,0.55)", fontStyle: "italic" }}>{t("visionPage.quoteEm")}</span>
+              {" "}{t("visionPage.quoteEnd")}
             </p>
             <motion.div animate={{ x: [0, 6, 0] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
               style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.2em", color: "rgba(255,102,0,0.4)" }}>veja ao vivo</span>
+              <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.2em", color: "rgba(255,102,0,0.4)" }}>{t("visionPage.liveLabel")}</span>
               <ArrowRight size={13} style={{ color: "rgba(255,102,0,0.4)" }} />
             </motion.div>
           </motion.div>
@@ -613,19 +634,18 @@ export default function Vision() {
             <div className="vis-b2-left">
               <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
                 style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.26em", color: "#ff6600", marginBottom: 20 }}>
-                ◈ A origem
+                ◈ {t("visionPage.originEyebrow")}
               </motion.p>
               <div style={{ fontSize: "clamp(26px,4vw,48px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.95 }}>
-                <R delay={0}>Por que o Fechou!</R>
-                <R delay={0.08}><span style={{ color: "#ff6600", fontStyle: "italic" }}>existe.</span></R>
+                <R delay={0}>{t("visionPage.originTitleA")}</R>
+                <R delay={0.08}><span style={{ color: "#ff6600", fontStyle: "italic" }}>{t("visionPage.originTitleB")}</span></R>
               </div>
             </div>
             <div className="vis-b2-right">
               <motion.p initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }}
                 style={{ fontSize: 15, color: "rgba(255,255,255,0.4)", lineHeight: 1.75, fontWeight: 300 }}>
-                O Fechou! nasceu da vivência real de quem trabalha como freelancer e entende que o maior desafio
-                não é executar bem um projeto — mas conseguir transformar conversas em{" "}
-                <span style={{ color: "rgba(255,255,255,0.8)", fontWeight: 500 }}>acordos claros e respeitados.</span>
+                {t("visionPage.originBodyA")} —{" "}
+                <span style={{ color: "rgba(255,255,255,0.8)", fontWeight: 500 }}>{t("visionPage.originBodyStrong")}</span>
               </motion.p>
             </div>
           </div>
@@ -653,22 +673,18 @@ export default function Vision() {
           <div className="vis-b3-left">
             <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
               style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.26em", color: "#ff6600", marginBottom: 22 }}>
-              ◈ O manifesto
+              ◈ {t("visionPage.manifestoEyebrow")}
             </motion.p>
             <div style={{ fontSize: "clamp(22px,3.5vw,44px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.96 }}>
-              <R delay={0}>Fechar com o Fechou!</R>
-              <R delay={0.08}>é assumir uma postura</R>
-              <R delay={0.16}><span style={{ color: "#ff6600", fontStyle: "italic" }}>madura</span> diante do</R>
-              <R delay={0.22}><span style={{ color: "rgba(255,255,255,0.2)" }}>próprio trabalho.</span></R>
+              <R delay={0}>{t("visionPage.manifestoTitleA")}</R>
+              <R delay={0.08}>{t("visionPage.manifestoTitleB")}</R>
+              <R delay={0.16}><span style={{ color: "#ff6600", fontStyle: "italic" }}>{t("visionPage.manifestoTitleEm")}</span> {t("visionPage.manifestoTitleC")}</R>
+              <R delay={0.22}><span style={{ color: "rgba(255,255,255,0.2)" }}>{t("visionPage.manifestoTitleD")}</span></R>
             </div>
           </div>
           <div className="vis-b3-right">
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              {[
-                { t: "É mostrar ao cliente que existe organização, método e compromisso por trás de cada entrega.", strong: false },
-                { t: "É deixar para trás o improviso constante e construir uma relação baseada em clareza e respeito mútuo.", strong: false },
-                { t: "O Fechou! existe para que você foque no que faz de melhor, enquanto a plataforma cuida da estrutura.", strong: true },
-              ].map((item, i) => (
+              {manifestoNotes.map((item, i) => (
                 <motion.p key={i} initial={{ opacity: 0, x: 14 }} whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }} transition={{ delay: i * 0.1 }}
                   style={{ fontSize: 14, color: item.strong ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.32)", lineHeight: 1.72, fontWeight: item.strong ? 500 : 300, borderLeft: "2px solid rgba(255,102,0,0.18)", paddingLeft: 14, margin: 0 }}>
@@ -680,7 +696,7 @@ export default function Vision() {
               <Link href="/system">
                 <motion.button whileHover={{ scale: 1.04, background: "#e55a00", boxShadow: "0 0 36px rgba(255,102,0,0.28)" }} whileTap={{ scale: 0.97 }}
                   style={{ padding: "13px 28px", borderRadius: 999, background: "#ff6600", border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s", display: "inline-flex", alignItems: "center", gap: 8 }}>
-                  Ver planos <ArrowRight size={13} />
+                  {t("visionPage.seePlans")} <ArrowRight size={13} />
                 </motion.button>
               </Link>
             </motion.div>
@@ -694,14 +710,14 @@ export default function Vision() {
           <div className="vis-b4-grid">
             <div>
               <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "rgba(0,0,0,0.45)", marginBottom: 10 }}>
-                ◈ Freelancers não precisam de mais promessas
+                ◈ {t("visionPage.ctaEyebrow")}
               </p>
               <p style={{ fontSize: "clamp(20px,3.2vw,38px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.95, color: "#000", marginBottom: 14 }}>
-                Precisam de ferramentas bem <em style={{ fontStyle: "italic", color: "rgba(0,0,0,0.45)" }}>construídas.</em>
+                {t("visionPage.ctaTitleA")} <em style={{ fontStyle: "italic", color: "rgba(0,0,0,0.45)" }}>{t("visionPage.ctaTitleEm")}</em>
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {["Sem promessas vazias", "Sem burocracia", "Sem complexidade"].map(t => (
-                  <span key={t} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 999, background: "rgba(0,0,0,0.1)", color: "rgba(0,0,0,0.55)", fontWeight: 600 }}>{t}</span>
+                {ctaChips.map(chip => (
+                  <span key={chip} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 999, background: "rgba(0,0,0,0.1)", color: "rgba(0,0,0,0.55)", fontWeight: 600 }}>{chip}</span>
                 ))}
               </div>
             </div>
@@ -709,13 +725,13 @@ export default function Vision() {
               <Link href="/register">
                 <motion.button whileHover={{ scale: 1.04, background: "#09090b" }} whileTap={{ scale: 0.97 }}
                   style={{ padding: "13px 28px", borderRadius: 999, background: "#000", border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.2s" }}>
-                  Criar conta grátis →
+                  {t("visionPage.createFree")}
                 </motion.button>
               </Link>
               <Link href="/system">
                 <motion.button whileHover={{ scale: 1.04, background: "rgba(0,0,0,0.1)" }} whileTap={{ scale: 0.97 }}
                   style={{ padding: "13px 28px", borderRadius: 999, background: "transparent", border: "1.5px solid rgba(0,0,0,0.2)", color: "rgba(0,0,0,0.5)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "all 0.2s" }}>
-                  Ver planos
+                  {t("visionPage.seePlans")}
                 </motion.button>
               </Link>
             </div>
@@ -723,7 +739,7 @@ export default function Vision() {
         </div>
         <div style={{ borderTop: "1px solid rgba(0,0,0,0.1)" }}>
           <div className="vis-b4-foot">
-            <p style={{ fontSize: 11, color: "rgba(0,0,0,0.28)", letterSpacing: "0.06em" }}>FECHOU! · Plataforma de contratos para freelancers brasileiros</p>
+            <p style={{ fontSize: 11, color: "rgba(0,0,0,0.28)", letterSpacing: "0.06em" }}>{t("visionPage.footerLine")}</p>
           </div>
         </div>
       </motion.div>

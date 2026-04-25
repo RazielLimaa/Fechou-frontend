@@ -1,33 +1,36 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { fileURLToPath, URL } from "node:url";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   appType: "spa",
-  plugins: [react(), runtimeErrorOverlay(), tailwindcss()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
-      "@": path.resolve(__dirname, "src"),
-      "@shared": path.resolve(__dirname, "shared"),
-      "@assets": path.resolve(__dirname, "attached_assets"),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@shared": fileURLToPath(new URL("./shared", import.meta.url)),
+      "@assets": fileURLToPath(new URL("./attached_assets", import.meta.url)),
     },
   },
   server: {
     host: "localhost",
     port: 5173,
-    proxy: {
-      "/api": {
-        target: "http://localhost:3001",
-        changeOrigin: true,
-        secure: false,
-      },
-    },
+    strictPort: true,
+    proxy:
+      mode === "development"
+        ? {
+            "/api": {
+              target: "http://localhost:3001",
+              changeOrigin: true,
+              secure: false,
+            },
+          }
+        : undefined,
   },
   build: {
     outDir: "dist",
     emptyOutDir: true,
   },
-});
+}));

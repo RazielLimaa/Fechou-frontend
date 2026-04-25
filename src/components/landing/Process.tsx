@@ -1,25 +1,35 @@
 import { motion } from "framer-motion";
 import { useRef, useEffect, useState } from "react";
+import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 
 function useIsMobile() {
   const [is, setIs] = useState(false);
   useEffect(() => {
-    const c = () => setIs(window.innerWidth < 768);
+    const c = () => setIs(window.innerWidth < 1100);
     c(); window.addEventListener("resize", c);
     return () => window.removeEventListener("resize", c);
   }, []);
   return is;
 }
 
-const steps = [
-  { num: "01", title: "Escolha o Template", desc: "Selecione entre dezenas de templates profissionais. Personalize com sua marca em segundos.", color: "rgba(255,255,255,0.03)" },
-  { num: "02", title: "Envie a Proposta", desc: "Compartilhe com um link. Seu cliente recebe uma proposta elegante que transmite confiança.", color: "rgba(255,102,0,0.06)" },
-  { num: "03", title: "Feche o Contrato", desc: "Aceite digital com registro. Acompanhe tudo no seu dashboard e veja suas vendas crescerem.", color: "rgba(255,255,255,0.03)" },
+const stepMeta = [
+  { num: "01", color: "rgba(255,255,255,0.03)" },
+  { num: "02", color: "rgba(255,102,0,0.06)" },
+  { num: "03", color: "rgba(255,255,255,0.03)" },
 ];
 
 export default function Process() {
+  const { t } = useTranslation();
   const ref = useRef(null);
   const isMobile = useIsMobile();
+  const [, navigate] = useLocation();
+  const translatedSteps = t("process.steps", { returnObjects: true }) as Array<{ title: string; desc: string }>;
+  const visibleSteps = stepMeta.map((step, index) => ({
+    ...step,
+    title: translatedSteps[index]?.title ?? "",
+    desc: translatedSteps[index]?.desc ?? "",
+  }));
 
   if (isMobile) {
     return (
@@ -28,10 +38,10 @@ export default function Process() {
         {/* header mobile */}
         <div style={{ padding: "0 20px 36px" }}>
           <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.26em", color: "#ff6600", marginBottom: 12 }}>
-            Como Funciona
+            {t("process.eyebrow")}
           </p>
           <h2 style={{ fontSize: "clamp(26px, 7.5vw, 36px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.95, margin: 0 }}>
-            Do primeiro contato<br />ao{" "}
+            {t("process.titleStart")}<br />{t("process.titleEnd")}{" "}
             <span style={{ color: "#ff6600", fontStyle: "italic" }}>Fechou!</span>
           </h2>
         </div>
@@ -41,12 +51,12 @@ export default function Process() {
           {/* linha vertical laranja */}
           <div style={{ position: "absolute", left: 48, top: 0, bottom: 0, width: 1, background: "linear-gradient(to bottom, transparent, rgba(255,102,0,0.3) 15%, rgba(255,102,0,0.3) 85%, transparent)" }} />
 
-          {steps.map((step, i) => (
+          {visibleSteps.map((step, i) => (
             <motion.div key={i}
               initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true, margin: "-20px" }}
               transition={{ duration: 0.55, delay: i * 0.1, ease: [0.16, 1, 0.3, 1] }}
-              style={{ display: "flex", gap: 20, marginBottom: i < steps.length - 1 ? 32 : 0, alignItems: "flex-start" }}>
+              style={{ display: "flex", gap: 20, marginBottom: i < stepMeta.length - 1 ? 32 : 0, alignItems: "flex-start" }}>
 
               {/* número com dot na linha */}
               <div style={{ flexShrink: 0, width: 56, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
@@ -92,14 +102,14 @@ export default function Process() {
         <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.4 }}
           style={{ margin: "36px 20px 0", padding: "24px 20px", borderRadius: 20, background: "rgba(255,102,0,0.08)", border: "1px solid rgba(255,102,0,0.2)" }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginBottom: 6 }}>
-            Comece em 5 minutos.
+            {t("process.mobileCtaTitle")}
           </p>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.55, marginBottom: 16 }}>
-            Sem burocracia, sem cartão. Seu primeiro contrato é gratuito.
+            {t("process.mobileCtaBody")}
           </p>
-          <motion.button whileTap={{ scale: 0.97 }}
+          <motion.button onClick={() => navigate("/register")} whileTap={{ scale: 0.97 }}
             style={{ width: "100%", padding: "13px", borderRadius: 999, background: "#ff6600", border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-            Criar conta grátis →
+            {t("common.createFreeAccountArrow")}
           </motion.button>
         </motion.div>
 
@@ -112,16 +122,16 @@ export default function Process() {
     <section ref={ref} className="py-40 relative px-6 overflow-hidden">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-20">
-          <h3 className="text-sm font-mono text-accent tracking-widest uppercase mb-4">Como Funciona</h3>
+          <h3 className="text-sm font-mono text-accent tracking-widest uppercase mb-4">{t("process.eyebrow")}</h3>
           <h2 className="text-3xl md:text-5xl font-display">
-            Do primeiro contato ao <span className="text-accent">Fechou!</span>
+            {t("process.titleStart")} {t("process.titleEnd")} <span className="text-accent">Fechou!</span>
           </h2>
           <p className="text-muted-foreground mt-4 text-lg max-w-2xl mx-auto">
-            Simplifique seu processo de vendas. Menos burocracia, mais contratos fechados.
+            {t("process.subtitle")}
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
-          {steps.map((step, i) => (
+          {visibleSteps.map((step, i) => (
             <motion.div key={i}
               initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
               transition={{ delay: i * 0.2, duration: 1, ease: [0.16, 1, 0.3, 1] }}

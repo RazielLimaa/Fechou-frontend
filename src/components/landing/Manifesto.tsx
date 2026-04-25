@@ -1,6 +1,8 @@
 import { motion, useScroll, useTransform, useMotionValueEvent } from "framer-motion";
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
+import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 
 const VIDEO_FRAMES = [
   "data:image/jpeg;base64,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",
@@ -251,12 +253,21 @@ function AnimNum({ n, suffix = "" }: { n: number; suffix?: string }) {
 }
 
 function PScrollBg({ sectionRef }: { sectionRef: RefObject<HTMLDivElement | null> }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imgCacheRef = useRef<(HTMLImageElement | null)[]>([]);
-  const loadedRef = useRef<boolean[]>([]);
-  const currentFrameRef = useRef(0);
+  const frameUrls = useMemo(
+    () =>
+      Array.from({ length: 192 }, (_, index) =>
+        `/videos/pen-frames/frame-${String(index + 1).padStart(3, "0")}.webp`,
+      ),
+    [],
+  );
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const targetFrameRef = useRef(0);
+  const displayFrameRef = useRef(0);
   const rafRef = useRef<number | null>(null);
+  const lastFrameTsRef = useRef<number | null>(null);
+  const interpolationStrength = 9;
+  const maxFrameStep = 2;
+  const hardSnapThreshold = 20;
 
   const { scrollYProgress } = useScroll({
     target: sectionRef,
@@ -264,90 +275,92 @@ function PScrollBg({ sectionRef }: { sectionRef: RefObject<HTMLDivElement | null
   });
 
   useEffect(() => {
-    imgCacheRef.current = new Array(VIDEO_FRAMES.length).fill(null);
-    loadedRef.current = new Array(VIDEO_FRAMES.length).fill(false);
+    const preloadFrame = (url: string) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = url;
+    };
 
-    VIDEO_FRAMES.forEach((src, i) => {
-      const img = new Image();
-      img.onload = () => {
-        imgCacheRef.current[i] = img;
-        loadedRef.current[i] = true;
-        if (i === 0) drawFrame(0);
-      };
-      img.src = src;
-    });
-  }, []);
+    frameUrls.slice(0, 24).forEach(preloadFrame);
 
-  const drawFrame = useCallback((index: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const img = imgCacheRef.current[index];
-    if (!img) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const preloadRest = () => {
+      frameUrls.slice(24).forEach(preloadFrame);
+    };
 
-    const cw = canvas.width;
-    const ch = canvas.height;
-    const iw = img.naturalWidth;
-    const ih = img.naturalHeight;
+    if ("requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(preloadRest);
+      return () => window.cancelIdleCallback(idleId);
+    }
 
-    const scale = Math.max(cw / iw, ch / ih);
-    const sw = iw * scale;
-    const sh = ih * scale;
-    const sx = (cw - sw) / 2;
-    const sy = (ch - sh) / 2;
-
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.drawImage(img, sx, sy, sw, sh);
-  }, []);
+    const timeoutId = globalThis.setTimeout(preloadRest, 0);
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [frameUrls]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ro = new ResizeObserver(() => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
-      drawFrame(currentFrameRef.current);
-    });
-    ro.observe(canvas);
-    return () => ro.disconnect();
-  }, [drawFrame]);
+    const tick = (ts: number) => {
+      const lastTs = lastFrameTsRef.current ?? ts;
+      const dt = Math.min(0.05, Math.max(0.001, (ts - lastTs) / 1000));
+      lastFrameTsRef.current = ts;
 
-  useEffect(() => {
-    const tick = () => {
-      const diff = targetFrameRef.current - currentFrameRef.current;
-      if (Math.abs(diff) > 0.5) {
-        currentFrameRef.current += diff * 0.55;
-        const idx = Math.round(currentFrameRef.current);
-        const clamped = Math.max(0, Math.min(VIDEO_FRAMES.length - 1, idx));
-        drawFrame(clamped);
+      const diff = targetFrameRef.current - displayFrameRef.current;
+      if (Math.abs(diff) > 0.001) {
+        if (Math.abs(diff) > hardSnapThreshold) {
+          displayFrameRef.current = targetFrameRef.current;
+        } else {
+          const ease = 1 - Math.exp(-interpolationStrength * dt);
+          const step = Math.max(-maxFrameStep, Math.min(maxFrameStep, diff * ease));
+          displayFrameRef.current += step;
+        }
       }
+
+      const nextFrameIndex = Math.max(0, Math.min(frameUrls.length - 1, Math.round(displayFrameRef.current)));
+      setCurrentFrameIndex((current) => (current === nextFrameIndex ? current : nextFrameIndex));
       rafRef.current = requestAnimationFrame(tick);
     };
+
+    lastFrameTsRef.current = null;
     rafRef.current = requestAnimationFrame(tick);
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [drawFrame]);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      lastFrameTsRef.current = null;
+    };
+  }, []);
 
   useMotionValueEvent(scrollYProgress, "change", (progress: number) => {
     const clamped = Math.max(0, Math.min(1, progress));
-    targetFrameRef.current = clamped * (VIDEO_FRAMES.length - 1);
+    const slowed = Math.pow(clamped, 1.65);
+    const nextTarget = slowed * (frameUrls.length - 1);
+    targetFrameRef.current = nextTarget;
+
+    if (Math.abs(nextTarget - displayFrameRef.current) > hardSnapThreshold * 2.5) {
+      displayFrameRef.current = nextTarget;
+      setCurrentFrameIndex(Math.max(0, Math.min(frameUrls.length - 1, Math.round(nextTarget))));
+    }
   });
 
   return (
-    <canvas
-      ref={canvasRef}
+    <img
+      src={frameUrls[currentFrameIndex]}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
       style={{
         position: "absolute",
         inset: 0,
         width: "100%",
         height: "100%",
-        display: "block",
+        objectFit: "cover",
+        pointerEvents: "none",
+        transform: "translateZ(0)",
+        willChange: "transform, contents",
       }}
     />
   );
 }
 
 export default function Manifesto() {
+  const { t } = useTranslation();
+  const [, navigate] = useLocation();
   const whiteRef = useRef(null);
   const transRef = useRef(null);
   const gridRef  = useRef(null);
@@ -370,6 +383,20 @@ export default function Manifesto() {
 
   const { scrollYProgress: fP } = useScroll({ target: featRef, offset: ["start end", "end start"] });
   const featX = useTransform(fP, [0, 1], ["0%", "-20%"]);
+  const stats = t("manifesto.stats", { returnObjects: true }) as Array<{ n: string; label: string }>;
+  const tickerItems = t("manifesto.ticker", { returnObjects: true }) as string[];
+  const manifestoCards = t("manifesto.cards", { returnObjects: true }) as Array<{ title: string; body: string }>;
+  const proofItems = t("manifesto.proof", { returnObjects: true }) as Array<{ label: string; body: string }>;
+  const checklistItems = t("manifesto.checklist", { returnObjects: true }) as string[];
+  const sideAItems = t("manifesto.sideA.items", { returnObjects: true }) as Array<{ label: string; body: string }>;
+  const sideBItems = t("manifesto.sideB.items", { returnObjects: true }) as Array<{ label: string; body: string }>;
+  const ticker2Items = t("manifesto.ticker2", { returnObjects: true }) as string[];
+  const whyCards = t("manifesto.whyCards", { returnObjects: true }) as Array<{ title: string; body: string }>;
+  const fieldFreeItems = t("manifesto.field.freeItems", { returnObjects: true }) as string[];
+  const fieldFreeItemsDesktop = t("manifesto.field.freeItemsDesktop", { returnObjects: true }) as string[];
+  const brandTags = t("manifesto.featureStrip.brandTags", { returnObjects: true }) as string[];
+  const historyItems = t("manifesto.featureStrip.historyItems", { returnObjects: true }) as string[];
+  const planLabels = t("manifesto.featureStrip.plans", { returnObjects: true }) as string[];
 
   return (
     <div style={{ fontFamily: "'DM Sans','Inter',sans-serif", userSelect: "none" }}>
@@ -389,6 +416,15 @@ export default function Manifesto() {
         .man-cards-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
         .man-bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
         .man-checklist { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 32px; }
+        .man-impact-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr) minmax(0, 0.9fr); gap: 14px; align-items: stretch; width: 100%; }
+        .man-impact-copy { display: flex; flex-direction: column; justify-content: space-between; gap: 28px; }
+        .man-proof-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 26px; }
+        .man-proof-card { padding: 16px 14px; border-radius: 16px; background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.06); min-height: 132px; display: flex; flex-direction: column; justify-content: space-between; }
+        .man-side-stack { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        .man-side-card { border-radius: 18px; padding: 22px 20px; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; }
+        .man-side-list { display: grid; gap: 10px; margin-top: 18px; }
+        .man-side-list > div { padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.12); }
+        .man-side-list.dark > div { border-top-color: rgba(0,0,0,0.08); }
         .man-mosaic { display: grid; grid-template-columns: 1.2fr 0.8fr; grid-template-rows: 1fr 1fr; gap: 10px; height: 460px; }
         .man-dark-grid { display: grid; grid-template-columns: 0.9fr 1.35fr 0.75fr; grid-template-rows: 380px 190px; gap: 12px; padding-top: 20px; }
         .man-feat-cards { display: flex; gap: 12px; padding-left: 64px; padding-right: 64px; }
@@ -396,6 +432,10 @@ export default function Manifesto() {
 
         /* Responsive styles */
         @media (max-width: 1024px) {
+          .man-impact-grid { grid-template-columns: 1fr 1fr !important; }
+          .man-impact-grid > div:last-child { grid-column: 1 / -1; }
+          .man-proof-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .man-side-stack { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .man-header { padding: 60px 48px 0; }
           .man-header-left { padding-right: 40px; }
           .man-header-right { padding-left: 40px; }
@@ -413,6 +453,8 @@ export default function Manifesto() {
         }
 
         @media (max-width: 768px) {
+          .man-impact-grid { grid-template-columns: 1fr !important; }
+          .man-proof-grid, .man-side-stack { grid-template-columns: 1fr !important; }
           .man-header { padding: 40px 24px 0 !important; }
           .man-header-grid { grid-template-columns: 1fr !important; gap: 0 !important; }
           .man-header-left { 
@@ -487,10 +529,10 @@ export default function Manifesto() {
           .man-feat-cards { 
             padding-left: 24px !important; 
             padding-right: 24px !important;
-            overflow-x: auto;
-            scrollbar-width: thin;
+            overflow: visible !important;
+            flex-wrap: wrap !important;
           }
-          .man-feat-card { min-width: 240px !important; }
+          .man-feat-card { min-width: 0 !important; width: 100% !important; }
           
           .man-cta-section { padding: 80px 24px !important; }
           .man-cta-btns { flex-direction: column !important; gap: 16px !important; }
@@ -533,6 +575,8 @@ export default function Manifesto() {
             align-items: center !important;
           }
           .man-stats div { text-align: center; }
+          .man-proof-card { min-height: auto !important; padding: 14px 13px !important; }
+          .man-side-card { padding: 18px 16px !important; }
           
           .man-cards-grid { gap: 10px !important; }
           .man-cards-grid > * { padding: 18px 14px !important; }
@@ -637,26 +681,22 @@ export default function Manifesto() {
             <div className="man-header-left">
               <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
                 style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.26em", color: "#ff6600", marginBottom: 20 }}>
-                ◈ Plataforma de contratos para freelancers
+                ◈ {t("manifesto.headerEyebrow")}
               </motion.p>
               <h2 style={{ fontSize: "clamp(28px, 5vw, 64px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.92, margin: 0 }}>
-                <Reveal delay={0}>Seu trabalho</Reveal>
-                <Reveal delay={0.08}>merece um</Reveal>
-                <Reveal delay={0.16}>contrato{" "}<span style={{ color: "#ff6600", fontStyle: "italic" }}>certo.</span></Reveal>
+                <Reveal delay={0}>{t("manifesto.headlineLine1")}</Reveal>
+                <Reveal delay={0.08}>{t("manifesto.headlineLine2")}</Reveal>
+                <Reveal delay={0.16}>{t("manifesto.headlineLine3Start")}{" "}<span style={{ color: "#ff6600", fontStyle: "italic" }}>{t("manifesto.headlineLine3Em")}</span></Reveal>
               </h2>
             </div>
             <div className="man-header-right">
               <motion.p initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.25 }}
                 style={{ fontSize: "clamp(13px, 1.5vw, 16px)", lineHeight: 1.72, color: "rgba(0,0,0,0.48)", fontWeight: 300 }}>
-                Crie, envie e assine contratos profissionais com validade jurídica. Do orçamento ao PIX — tudo em um lugar, em minutos.
+                {t("manifesto.intro")}
               </motion.p>
               <div className="man-stats-row">
                 <div className="man-stats">
-                  {[
-                    { n: "10+", label: "tipos de contrato" },
-                    { n: "5min", label: "do zero ao enviado" },
-                    { n: "R$ 0", label: "para começar" },
-                  ].map((s, i) => (
+                  {stats.map((s, i) => (
                     <motion.div key={i} initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }} transition={{ delay: 0.3 + i * 0.08 }}>
                       <p style={{ fontSize: "clamp(18px, 2vw, 22px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color: "#09090b" }}>{s.n}</p>
@@ -665,10 +705,11 @@ export default function Manifesto() {
                   ))}
                 </div>
                 <motion.button className="man-cta-btn-top"
+                  onClick={() => navigate("/register")}
                   initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.45 }}
                   whileHover={{ scale: 1.04, background: "#e55a00" }} whileTap={{ scale: 0.97 }}
                   style={{ padding: "12px 24px", borderRadius: 999, background: "#ff6600", border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "background 0.2s" }}>
-                  Criar conta grátis →
+                  {t("common.createFreeAccountArrow")}
                 </motion.button>
               </div>
             </div>
@@ -709,37 +750,23 @@ export default function Manifesto() {
           <div className="ticker1-track">
             {[...Array(2)].map((_, rep) => (
               <span key={rep} style={{ display: "inline-flex", alignItems: "center" }}>
-                {[
-                  { t: "Contratos", outline: false },
-                  { t: "✦", sep: true },
-                  { t: "Assinatura", outline: true },
-                  { t: "✦", sep: true },
-                  { t: "Fechou!", outline: false, italic: true },
-                  { t: "✦", sep: true },
-                  { t: "PIX Direto", outline: true },
-                  { t: "✦", sep: true },
-                  { t: "5 minutos", outline: false },
-                  { t: "✦", sep: true },
-                  { t: "R$ 0", outline: true, italic: true },
-                  { t: "✦", sep: true },
-                ].map((item, j) =>
-                  item.sep ? (
-                    <span key={j} style={{ fontSize: 16, color: "rgba(255,255,255,0.3)", padding: "0 20px", flexShrink: 0 }}>✦</span>
-                  ) : (
+                {tickerItems.map((item, j) => (
+                  <span key={`${item}-${j}`} style={{ display: "inline-flex", alignItems: "center" }}>
                     <span key={j} style={{
                       fontSize: "clamp(28px, 4vw, 52px)",
                       fontWeight: 900,
                       letterSpacing: "-0.04em",
                       lineHeight: 1,
                       padding: "0 8px",
-                      fontStyle: item.italic ? "italic" : "normal",
-                      color: item.outline ? "transparent" : "#fff",
-                      WebkitTextStroke: item.outline ? "1.5px rgba(255,255,255,0.6)" : "0",
+                      fontStyle: item === "Fechou!" || item === "R$ 0" ? "italic" : "normal",
+                      color: j % 2 === 1 ? "transparent" : "#fff",
+                      WebkitTextStroke: j % 2 === 1 ? "1.5px rgba(255,255,255,0.6)" : "0",
                       textTransform: "capitalize",
                       flexShrink: 0,
-                    }}>{item.t}</span>
-                  )
-                )}
+                    }}>{item}</span>
+                    <span style={{ fontSize: 16, color: "rgba(255,255,255,0.3)", padding: "0 20px", flexShrink: 0 }}>✦</span>
+                  </span>
+                ))}
               </span>
             ))}
           </div>
@@ -747,12 +774,15 @@ export default function Manifesto() {
 
         <div style={{ padding: "48px 64px 0" }}>
           <div className="man-cards-grid">
-            {[
-              { icon: "⌨", title: "Crie em minutos", body: "Templates para +10 tipos de serviço. Arraste cláusulas, edite o texto, veja o resultado ao vivo.", accent: false },
-              { icon: "◉", title: "Assinatura legal", body: "Seu cliente assina pelo link. Criptografia AES-256. Validade pela MP 2.200-2/2001. Zero app.", accent: true },
-              { icon: "◎", title: "Sua identidade", body: "Logo, cor e fonte personalizadas. Seu contrato parece uma agência, não um template genérico.", accent: false },
-              { icon: "◆", title: "PIX na hora", body: "Configure sua chave e receba direto após a assinatura. Sem intermediários, sem taxas extras.", accent: false },
-            ].map((c, i) => (
+            {manifestoCards.map((copy, i) => {
+              const cardMeta = [
+                { icon: "⌨", accent: false },
+                { icon: "◉", accent: true },
+                { icon: "◎", accent: false },
+                { icon: "◆", accent: false },
+              ][i] ?? { icon: "•", accent: false };
+              const c = { ...copy, ...cardMeta };
+              return (
               <motion.div key={i}
                 initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-30px" }}
@@ -768,42 +798,45 @@ export default function Manifesto() {
                   <p style={{ fontSize: 11, lineHeight: 1.6, fontWeight: 300, color: c.accent ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)" }}>{c.body}</p>
                 </div>
               </motion.div>
-            ))}
+            );})}
           </div>
         </div>
 
        <div style={{ padding: "56px 64px 72px" }}>
-          <div style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(3, 1fr)", 
-            gap: 14, 
-            alignItems: "stretch",
-            width: "100%"
-          }}>
-            <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div className="man-impact-grid">
+            <div className="man-impact-copy">
               <div>
                 <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
                   style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "#ff6600", marginBottom: 16 }}>
-                  ◈ Por que importa
+                  ◈ {t("manifesto.impactEyebrow")}
                 </motion.p>
                 <div style={{ fontSize: "clamp(22px, 4vw, 52px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.92 }}>
-                  <Reveal>Um contrato bem feito</Reveal>
-                  <Reveal delay={0.08}>não é detalhe —</Reveal>
-                  <Reveal delay={0.16}>é <span style={{ color: "#ff6600", fontStyle: "italic" }}>diferencial.</span></Reveal>
+                  <Reveal>{t("manifesto.impactLine1")}</Reveal>
+                  <Reveal delay={0.08}>{t("manifesto.impactLine2")}</Reveal>
+                  <Reveal delay={0.16}>{t("manifesto.impactLine3Start")} <span style={{ color: "#ff6600", fontStyle: "italic" }}>{t("manifesto.impactLine3Em")}</span></Reveal>
                 </div>
                 <motion.p initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }}
                   style={{ marginTop: 22, fontSize: 14, lineHeight: 1.72, color: "rgba(0,0,0,0.45)", fontWeight: 300 }}>
-                  Freelancers que usam contratos formais são percebidos como mais profissionais — e cobram mais por isso.
+                  {t("manifesto.impactBody")}
                 </motion.p>
+                <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.35 }}
+                  className="man-proof-grid">
+                  {proofItems.map((item, i) => (
+                    <div key={i} className="man-proof-card">
+                      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "-0.02em", color: "#09090b", margin: 0 }}>{item.label}</p>
+                      <p style={{ fontSize: 12, lineHeight: 1.65, color: "rgba(0,0,0,0.48)", margin: 0 }}>{item.body}</p>
+                    </div>
+                  ))}
+                </motion.div>
               </div>
               <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }}
                 className="man-checklist">
-                {["Validade jurídica real", "Sem burocracia", "Link para o cliente", "PDF com sua marca", "PIX após assinatura", "Histórico completo"].map((t, i) => (
+                {checklistItems.map((item, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 12px", borderRadius: 9, background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}>
                     <div style={{ width: 15, height: 15, borderRadius: "50%", background: "rgba(255,102,0,0.1)", border: "1px solid rgba(255,102,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <svg width="7" height="7" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#ff6600" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(0,0,0,0.55)" }}>{t}</span>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(0,0,0,0.55)" }}>{item}</span>
                   </div>
                 ))}
               </motion.div>
@@ -816,21 +849,41 @@ export default function Manifesto() {
               <PScrollBg sectionRef={pqRef} />
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="man-side-stack">
               <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-                style={{ flex: 1, borderRadius: 18, padding: "22px 20px", background: "#ff6600", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(0,0,0,0.45)" }}>Tempo médio</p>
+                className="man-side-card"
+                style={{ background: "#ff6600" }}>
                 <div>
-                  <p style={{ fontSize: 48, fontWeight: 900, letterSpacing: "-0.05em", lineHeight: 0.9, color: "#000" }}>5<span style={{ fontSize: 24 }}>min</span></p>
-                  <p style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginTop: 6 }}>do zero ao contrato enviado</p>
+                  <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(0,0,0,0.45)", margin: 0 }}>{t("manifesto.sideA.eyebrow")}</p>
+                  <p style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.95, color: "#000", margin: "14px 0 0" }}>
+                    {t("manifesto.sideA.title")}
+                  </p>
+                </div>
+                <div className="man-side-list dark">
+                  {sideAItems.map((item) => (
+                    <div key={item.label}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#000", margin: 0 }}>{item.label}</p>
+                      <p style={{ fontSize: 11, lineHeight: 1.6, color: "rgba(0,0,0,0.58)", margin: "4px 0 0" }}>{item.body}</p>
+                    </div>
+                  ))}
                 </div>
               </motion.div>
               <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ duration: 0.55, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-                style={{ flex: 1, borderRadius: 18, padding: "22px 20px", background: "#09090b", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)" }}>Para começar</p>
+                className="man-side-card"
+                style={{ background: "#09090b" }}>
                 <div>
-                  <p style={{ fontSize: 48, fontWeight: 900, letterSpacing: "-0.05em", lineHeight: 0.9, color: "#ff6600" }}>R$0</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 6 }}>para criar sua conta</p>
+                  <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", margin: 0 }}>{t("manifesto.sideB.eyebrow")}</p>
+                  <p style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.95, color: "#fff", margin: "14px 0 0" }}>
+                    {t("manifesto.sideB.title")}
+                  </p>
+                </div>
+                <div className="man-side-list">
+                  {sideBItems.map((item) => (
+                    <div key={item.label}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#fff", margin: 0 }}>{item.label}</p>
+                      <p style={{ fontSize: 11, lineHeight: 1.6, color: "rgba(255,255,255,0.42)", margin: "4px 0 0" }}>{item.body}</p>
+                    </div>
+                  ))}
                 </div>
               </motion.div>
             </div>
@@ -857,16 +910,7 @@ export default function Manifesto() {
           <div className="ticker3-track">
             {[...Array(2)].map((_, rep) => (
               <span key={rep} style={{ display: "inline-flex", alignItems: "center" }}>
-                {[
-                  { text: "PREVIEW AO VIVO", filled: true },
-                  { text: "PDF PROFISSIONAL", filled: false },
-                  { text: "PLANOS PRO", filled: true },
-                  { text: "FECHOU!", filled: false },
-                  { text: "PREMIUM", filled: true },
-                  { text: "100% Online", filled: false },
-                  { text: "ASSINE ONLINE", filled: true },
-                  { text: "GRÁTIS", filled: false },
-                ].map((item, j) => (
+                {ticker2Items.map((text, j) => (
                   <span key={j} style={{ display: "inline-flex", alignItems: "center", gap: 0 }}>
                     <span style={{
                       fontSize: "clamp(20px, 3.5vw, 42px)",
@@ -874,11 +918,11 @@ export default function Manifesto() {
                       letterSpacing: "-0.04em",
                       textTransform: "uppercase",
                       padding: "0 24px",
-                      color: item.filled ? "#09090b" : "transparent",
-                      WebkitTextStroke: item.filled ? "0" : "1.5px rgba(0,0,0,0.18)",
+                      color: j % 2 === 0 ? "#09090b" : "transparent",
+                      WebkitTextStroke: j % 2 === 0 ? "0" : "1.5px rgba(0,0,0,0.18)",
                       lineHeight: 1.1,
                       transition: "all 0.2s",
-                    }}>{item.text}</span>
+                    }}>{text}</span>
                     <span style={{ color: "#ff6600", fontSize: "clamp(14px, 2vw, 20px)", flexShrink: 0 }}>◈</span>
                   </span>
                 ))}
@@ -893,22 +937,20 @@ export default function Manifesto() {
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
             style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "#ff6600", marginBottom: 20 }}>
-            ◈ Por que a Fechou?
+            ◈ {t("manifesto.whyEyebrow")}
           </motion.p>
           <motion.div style={{ fontSize: "clamp(28px, 5.5vw, 72px)", fontWeight: 900, letterSpacing: "-0.043em", lineHeight: 0.92, color: txtColor }}>
-            <Reveal>Freelancer não tem</Reveal>
-            <Reveal delay={0.08}>tempo a perder{" "}<span style={{ color: "#ff6600" }}>com burocracia.</span></Reveal>
+            <Reveal>{t("manifesto.whyLine1")}</Reveal>
+            <Reveal delay={0.08}>{t("manifesto.whyLine2Start")}{" "}<span style={{ color: "#ff6600" }}>{t("manifesto.whyLine2Em")}</span></Reveal>
           </motion.div>
           <motion.p initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }}
             style={{ fontSize: "clamp(14px, 1.5vw, 18px)", lineHeight: 1.75, maxWidth: 620, marginTop: 36, fontWeight: 300, color: subColor }}>
-            Um contrato mal feito — ou inexistente — custa caro. Projetos sem escopo, clientes que somem, pagamentos que não vêm. A Fechou! fecha essas brechas.
+            {t("manifesto.whyBody")}
           </motion.p>
           <div className="man-trans-cards" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2, marginTop: 64 }}>
-            {[
-              { num: "01", title: "Crie em minutos", body: "Templates para +10 tipos de serviço. Escopo, cláusulas e valores — você preenche, a plataforma formata." },
-              { num: "02", title: "Cliente assina pelo celular", body: "Envie um link. Seu cliente assina com validade jurídica sem baixar nenhum app. Impressionante para ele." },
-              { num: "03", title: "Receba sem intermediários", body: "Configure sua chave PIX. Libere o pagamento após a assinatura. Zero taxas escondidas." },
-            ].map((p, i) => (
+            {whyCards.map((copy, i) => {
+              const p = { num: String(i + 1).padStart(2, "0"), ...copy };
+              return (
               <motion.div key={i} className="man-trans-card"
                 initial={{ opacity: 0, y: 26 }} whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-40px" }} transition={{ duration: 0.7, delay: i * 0.1, ease: [0.16, 1, 0.3, 1] }}
@@ -918,7 +960,7 @@ export default function Manifesto() {
                 <motion.p style={{ fontSize: "clamp(14px, 1.5vw, 17px)", fontWeight: 700, marginBottom: 10, lineHeight: 1.2, letterSpacing: "-0.02em", color: txtColor }}>{p.title}</motion.p>
                 <motion.p style={{ fontSize: 14, lineHeight: 1.72, fontWeight: 300, color: subColor }}>{p.body}</motion.p>
               </motion.div>
-            ))}
+            );})}
           </div>
         </div>
       </motion.section>
@@ -927,27 +969,27 @@ export default function Manifesto() {
       <section ref={gridRef} className="man-dark-section" style={{ background: "#09090b", overflow: "hidden", paddingBottom: 130 }}>
         <div className="man-dark-mobile" style={{ display: "none", flexDirection: "column", gap: 0, padding: "48px 16px 56px" }}>
           <div style={{ marginBottom: 28 }}>
-            <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.26em", color: "#ff6600", marginBottom: 12 }}>◈ Para qualquer área</p>
+            <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.26em", color: "#ff6600", marginBottom: 12 }}>◈ {t("manifesto.field.eyebrow")}</p>
             <h3 style={{ fontSize: "clamp(24px, 7vw, 34px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.95, color: "#fff", margin: 0 }}>
-              Design, Dev,<br />
-              <span style={{ color: "rgba(255,255,255,0.25)", fontStyle: "italic" }}>Marketing e mais.</span>
+              {t("manifesto.field.titleLine1")}<br />
+              <span style={{ color: "rgba(255,255,255,0.25)", fontStyle: "italic" }}>{t("manifesto.field.titleLine2")}</span>
             </h3>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto auto", gap: 10 }}>
             <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }}
               style={{ gridColumn: "1 / 3", position: "relative", borderRadius: 18, overflow: "hidden", height: 180 }}>
-              <img src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=900&q=85" alt="Equipe" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <img src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=900&q=85" alt={t("manifesto.field.altTeam")} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(9,9,11,0.6) 0%, transparent 60%, rgba(9,9,11,0.7) 100%)" }} />
               <div style={{ position: "absolute", top: 18, left: 18 }}>
-                <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#ff6600", marginBottom: 6 }}>Para qualquer área criativa</p>
-                <p style={{ fontSize: 18, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.1 }}>Design, Dev,<br />Marketing e mais.</p>
+                <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#ff6600", marginBottom: 6 }}>{t("manifesto.field.imageEyebrow")}</p>
+                <p style={{ fontSize: 18, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.1 }}>{String(t("manifesto.field.imageTitle")).split("\n").map((line, index, lines) => <span key={line}>{line}{index < lines.length - 1 ? <br /> : null}</span>)}</p>
               </div>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.07 }}
               style={{ borderRadius: 18, background: "#ff6600", padding: "18px 14px", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: 180 }}>
-              <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.45)", marginBottom: 10 }}>Plano grátis</p>
+              <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.45)", marginBottom: 10 }}>{t("manifesto.field.freePlan")}</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {["Contratos ilimitados", "Assinatura digital", "Envio por link", "PDF profissional"].map((item) => (
+                {fieldFreeItems.map((item) => (
                   <div key={item} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <div style={{ width: 13, height: 13, borderRadius: "50%", background: "rgba(0,0,0,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <svg width="6" height="6" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -956,23 +998,23 @@ export default function Manifesto() {
                   </div>
                 ))}
               </div>
-              <button style={{ marginTop: 12, padding: "9px 10px", borderRadius: 10, background: "rgba(0,0,0,0.1)", border: "none", color: "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", width: "100%" }}>Criar conta →</button>
+              <button onClick={() => navigate("/register")} style={{ marginTop: 12, padding: "9px 10px", borderRadius: 10, background: "rgba(0,0,0,0.1)", border: "none", color: "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", width: "100%" }}>{t("manifesto.field.createAccount")}</button>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.12 }}
               style={{ borderRadius: 18, overflow: "hidden", position: "relative", minHeight: 180 }}>
-              <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=500&q=85" alt="Freelancer" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=500&q=85" alt={t("manifesto.field.altFreelancer")} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(9,9,11,0.88) 0%, transparent 55%)" }} />
               <div style={{ position: "absolute", bottom: 14, left: 14, right: 14 }}>
                 <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "#ff6600", border: "1px solid rgba(255,102,0,0.4)", borderRadius: 999, padding: "3px 8px", display: "inline-block", marginBottom: 5 }}>R$ 0</span>
-                <p style={{ fontSize: 12, fontWeight: 700, color: "#fff", lineHeight: 1.25 }}>Grátis para começar</p>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#fff", lineHeight: 1.25 }}>{t("manifesto.field.freeToStart")}</p>
               </div>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.18 }}
               style={{ gridColumn: "1 / 3", borderRadius: 18, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", padding: "20px 18px", display: "flex", alignItems: "center", gap: 16 }}>
               <p style={{ fontSize: 28, color: "#ff6600", lineHeight: 1, flexShrink: 0 }}>◈</p>
               <div>
-                <p style={{ fontSize: 14, fontWeight: 700, color: "#fff", lineHeight: 1.3, letterSpacing: "-0.02em", marginBottom: 4 }}>Mais profissionalismo, mais confiança.</p>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", lineHeight: 1.55, fontWeight: 300 }}>Clientes pagam mais por quem tem processo.</p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "#fff", lineHeight: 1.3, letterSpacing: "-0.02em", marginBottom: 4 }}>{t("manifesto.field.trustTitle")}</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", lineHeight: 1.55, fontWeight: 300 }}>{t("manifesto.field.trustBody")}</p>
               </div>
             </motion.div>
           </div>
@@ -981,23 +1023,23 @@ export default function Manifesto() {
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "60px 64px 0" }}>
           <div className="man-dark-grid">
             <motion.div className="man-dark-img-tall" style={{ y: gY1, gridRow: "1 / 3" }}>
-              <PImg src="https://images.unsplash.com/photo-1551434678-e076c223a692?w=700&q=85" alt="Trabalho" style={{ height: "100%", borderRadius: 20 }} />
+              <PImg src="https://images.unsplash.com/photo-1551434678-e076c223a692?w=700&q=85" alt={t("manifesto.field.altWork")} style={{ height: "100%", borderRadius: 20 }} />
             </motion.div>
             <div className="man-dark-img-main" style={{ position: "relative", borderRadius: 20, overflow: "hidden" }}>
-              <PImg src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=900&q=85" alt="Equipe" style={{ height: "100%", borderRadius: 20 }} />
+              <PImg src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=900&q=85" alt={t("manifesto.field.altTeam")} style={{ height: "100%", borderRadius: 20 }} />
               <div style={{ position: "absolute", inset: 0, borderRadius: 20, background: "linear-gradient(to top, rgba(9,9,11,0.88) 0%, transparent 55%)", display: "flex", alignItems: "flex-end", padding: 28 }}>
                 <div>
-                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#ff6600", marginBottom: 8 }}>Para qualquer área criativa</p>
-                  <p style={{ fontSize: "clamp(16px, 2vw, 22px)", fontWeight: 700, color: "#fff", letterSpacing: "-0.025em", lineHeight: 1.2 }}>Design, Dev, Marketing,<br />Foto, Educação e mais.</p>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#ff6600", marginBottom: 8 }}>{t("manifesto.field.imageEyebrow")}</p>
+                  <p style={{ fontSize: "clamp(16px, 2vw, 22px)", fontWeight: 700, color: "#fff", letterSpacing: "-0.025em", lineHeight: 1.2 }}>{String(t("manifesto.field.imageTitle")).split("\n").map((line, index, lines) => <span key={line}>{line}{index < lines.length - 1 ? <br /> : null}</span>)}</p>
                 </div>
               </div>
             </div>
             <motion.div className="man-dark-card-side" style={{ y: gY2 }}>
               <motion.div initial={{ opacity: 0, scale: 0.92 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
                 style={{ borderRadius: 20, padding: 26, height: "100%", background: "#ff6600", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <p style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(0,0,0,0.42)" }}>Plano gratuito inclui</p>
+                <p style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(0,0,0,0.42)" }}>{t("manifesto.field.freePlanIncludes")}</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {["Contratos ilimitados", "Assinatura digital", "Envio por link público", "PDF profissional"].map((item, i) => (
+                  {fieldFreeItemsDesktop.map((item, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ width: 16, height: 16, borderRadius: "50%", background: "rgba(0,0,0,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                         <svg width="8" height="8" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#000" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -1006,9 +1048,9 @@ export default function Manifesto() {
                     </div>
                   ))}
                 </div>
-                <motion.button whileHover={{ background: "rgba(0,0,0,0.1)" }}
+                <motion.button onClick={() => navigate("/register")} whileHover={{ background: "rgba(0,0,0,0.1)" }}
                   style={{ padding: "11px 16px", borderRadius: 10, background: "rgba(0,0,0,0.07)", border: "1px solid rgba(0,0,0,0.1)", color: "#000", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%", transition: "background 0.2s" }}>
-                  Criar conta →
+                  {t("manifesto.field.createAccount")}
                 </motion.button>
               </motion.div>
             </motion.div>
@@ -1016,11 +1058,11 @@ export default function Manifesto() {
               style={{ borderRadius: 20, padding: 26, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
               <p style={{ fontSize: 28, color: "#ff6600" }}>◈</p>
               <div>
-                <p style={{ fontSize: "clamp(14px, 1.5vw, 17px)", fontWeight: 700, lineHeight: 1.3, color: "#fff", letterSpacing: "-0.02em" }}>Mais profissionalismo, mais confiança, mais negócios fechados.</p>
-                <p style={{ marginTop: 8, fontSize: 13, color: "rgba(255,255,255,0.32)", lineHeight: 1.65 }}>Clientes pagam mais por quem tem processo.</p>
+                <p style={{ fontSize: "clamp(14px, 1.5vw, 17px)", fontWeight: 700, lineHeight: 1.3, color: "#fff", letterSpacing: "-0.02em" }}>{t("manifesto.field.trustTitleLong")}</p>
+                <p style={{ marginTop: 8, fontSize: 13, color: "rgba(255,255,255,0.32)", lineHeight: 1.65 }}>{t("manifesto.field.trustBody")}</p>
               </div>
             </motion.div>
-            <PImg src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=600&q=85" alt="Freelancer" style={{ borderRadius: 20, height: "100%" }} />
+            <PImg src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=600&q=85" alt={t("manifesto.field.altFreelancer")} style={{ borderRadius: 20, height: "100%" }} />
           </div>
         </div>
       </section>
@@ -1078,12 +1120,12 @@ export default function Manifesto() {
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 clamp(20px,5vw,64px) clamp(40px,5vw,64px)" }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
             <div style={{ fontSize: "clamp(26px, 4.5vw, 54px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.93, color: "#fff" }}>
-              <Reveal>Tudo que você precisa.</Reveal>
-              <Reveal delay={0.08}><span style={{ color: "rgba(255,255,255,0.18)", fontStyle: "italic" }}>Nada que não precisa.</span></Reveal>
+              <Reveal>{t("manifesto.featureStrip.titleLine1")}</Reveal>
+              <Reveal delay={0.08}><span style={{ color: "rgba(255,255,255,0.18)", fontStyle: "italic" }}>{t("manifesto.featureStrip.titleLine2")}</span></Reveal>
             </div>
             <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.3 }}
               style={{ fontSize: 13, color: "rgba(255,255,255,0.28)", maxWidth: 220, lineHeight: 1.6, fontWeight: 300 }}>
-              Cada feature foi escolhida a dedo para o fluxo real do freelancer.
+              {t("manifesto.featureStrip.body")}
             </motion.p>
           </div>
         </div>
@@ -1095,36 +1137,36 @@ export default function Manifesto() {
               <div key={rep} aria-hidden={rep > 0 ? true : undefined} className="feat-gap" style={{ display: "flex" }}>
 
                 <div className="feat-card-wrap fc fc-a">
-                  <span style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.45)" }}>Editor</span>
+                  <span style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.45)" }}>{t("manifesto.featureStrip.liveEditorLabel")}</span>
                   <div>
-                    <p style={{ fontSize: "clamp(28px,4vw,42px)", lineHeight: 1, fontWeight: 900, color: "#000", letterSpacing: "-0.05em" }}>Ao<br/>vivo</p>
-                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(0,0,0,0.5)", marginTop: 8, lineHeight: 1.5 }}>Veja o PDF mudar em tempo real enquanto edita.</p>
+                    <p style={{ fontSize: "clamp(28px,4vw,42px)", lineHeight: 1, fontWeight: 900, color: "#000", letterSpacing: "-0.05em" }}>{t("manifesto.featureStrip.liveEditorTitleLine1")}<br/>{t("manifesto.featureStrip.liveEditorTitleLine2")}</p>
+                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(0,0,0,0.5)", marginTop: 8, lineHeight: 1.5 }}>{t("manifesto.featureStrip.liveEditorBody")}</p>
                   </div>
                 </div>
 
                 <div className="feat-card-wrap fc fc-b">
                   <div style={{ width: "clamp(34px,4vw,44px)", height: "clamp(34px,4vw,44px)", borderRadius: 14, background: "rgba(255,102,0,0.08)", border: "1px solid rgba(255,102,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "clamp(15px,2vw,20px)" }}>◉</div>
                   <div>
-                    <p style={{ fontSize: "clamp(13px,1.5vw,16px)", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", marginBottom: 6, lineHeight: 1.2 }}>Assinatura<br/>com validade legal</p>
-                    <p style={{ fontSize: "clamp(10px,1.1vw,12px)", color: "rgba(255,255,255,0.28)", lineHeight: 1.55 }}>AES-256. MP 2.200-2/2001. Seu cliente assina pelo link, sem app.</p>
+                    <p style={{ fontSize: "clamp(13px,1.5vw,16px)", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", marginBottom: 6, lineHeight: 1.2 }}>{String(t("manifesto.featureStrip.signatureTitle")).split("\n").map((line, index, lines) => <span key={line}>{line}{index < lines.length - 1 ? <br /> : null}</span>)}</p>
+                    <p style={{ fontSize: "clamp(10px,1.1vw,12px)", color: "rgba(255,255,255,0.28)", lineHeight: 1.55 }}>{t("manifesto.featureStrip.signatureBody")}</p>
                   </div>
                 </div>
 
                 <div className="feat-card-wrap fc fc-c">
-                  <p style={{ fontSize: "clamp(12px,1.4vw,15px)", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.2 }}>Sua marca<br/>no contrato</p>
+                  <p style={{ fontSize: "clamp(12px,1.4vw,15px)", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.2 }}>{String(t("manifesto.featureStrip.brandTitle")).split("\n").map((line, index, lines) => <span key={line}>{line}{index < lines.length - 1 ? <br /> : null}</span>)}</p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
-                    {["Logo", "Cor", "Fonte", "PDF", "Capa"].map((tag) => (
+                    {brandTags.map((tag) => (
                       <span key={tag} style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)" }}>{tag}</span>
                     ))}
                   </div>
-                  <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.28)", lineHeight: 1.5, marginTop: 8 }}>Parece agência. Não template.</p>
+                  <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.28)", lineHeight: 1.5, marginTop: 8 }}>{t("manifesto.featureStrip.brandBody")}</p>
                 </div>
 
                 <div className="feat-card-wrap fc fc-d">
                   <span style={{ fontSize: "clamp(20px,2.5vw,28px)", lineHeight: 1 }}>◆</span>
                   <div>
-                    <p style={{ fontSize: "clamp(22px,3vw,32px)", fontWeight: 900, color: "#ff6600", letterSpacing: "-0.05em", lineHeight: 0.95 }}>PIX<br/><span style={{ fontSize: "clamp(11px,1.2vw,14px)", color: "rgba(255,255,255,0.4)", fontWeight: 400, letterSpacing: 0 }}>após assinar</span></p>
-                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.28)", marginTop: 8, lineHeight: 1.5 }}>Direto na sua chave. Zero taxa.</p>
+                    <p style={{ fontSize: "clamp(22px,3vw,32px)", fontWeight: 900, color: "#ff6600", letterSpacing: "-0.05em", lineHeight: 0.95 }}>PIX<br/><span style={{ fontSize: "clamp(11px,1.2vw,14px)", color: "rgba(255,255,255,0.4)", fontWeight: 400, letterSpacing: 0 }}>{t("manifesto.featureStrip.pixAfter")}</span></p>
+                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.28)", marginTop: 8, lineHeight: 1.5 }}>{t("manifesto.featureStrip.pixBody")}</p>
                   </div>
                 </div>
 
@@ -1142,41 +1184,41 @@ export default function Manifesto() {
                 <div className="feat-card-wrap fc fc-e">
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: "clamp(16px,2vw,22px)", color: "#ff6600" }}>◷</span>
-                    <span style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 700, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.12em" }}>Link com prazo</span>
+                    <span style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 700, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.12em" }}>{t("manifesto.featureStrip.deadlineLabel")}</span>
                   </div>
                   <div>
-                    <p style={{ fontSize: "clamp(12px,1.4vw,15px)", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.3, marginBottom: 6 }}>Envie. Defina quando expira. Pronto.</p>
-                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.25)", lineHeight: 1.5 }}>Seu cliente recebe um link público. Você controla o tempo.</p>
+                    <p style={{ fontSize: "clamp(12px,1.4vw,15px)", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.3, marginBottom: 6 }}>{t("manifesto.featureStrip.deadlineTitle")}</p>
+                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.25)", lineHeight: 1.5 }}>{t("manifesto.featureStrip.deadlineBody")}</p>
                   </div>
                 </div>
 
                 <div className="feat-card-wrap fc fc-f">
-                  <span style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.4)" }}>Histórico</span>
+                  <span style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.4)" }}>{t("manifesto.featureStrip.historyLabel")}</span>
                   <div>
-                    {["Enviado ✓", "Visualizado ✓", "Assinado ✓", "Pago ✓"].map((s, i) => (
+                    {historyItems.map((s, i) => (
                       <div key={i} style={{ fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 700, color: i === 3 ? "#000" : "rgba(0,0,0,0.45)", padding: "4px 0", borderBottom: i < 3 ? "1px solid rgba(0,0,0,0.1)" : "none" }}>{s}</div>
                     ))}
                   </div>
                 </div>
 
                 <div className="feat-card-wrap fc fc-g">
-                  <span style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 700, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.12em" }}>Tipos</span>
+                  <span style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 700, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.12em" }}>{t("manifesto.featureStrip.typesLabel")}</span>
                   <div>
                     <p style={{ fontSize: "clamp(44px,6vw,64px)", fontWeight: 900, color: "rgba(255,102,0,0.15)", letterSpacing: "-0.06em", lineHeight: 0.85 }}>10+</p>
-                    <p style={{ fontSize: "clamp(11px,1.3vw,13px)", fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginTop: 6 }}>modelos prontos</p>
-                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.25)", marginTop: 3 }}>Design, Dev, Foto e mais.</p>
+                    <p style={{ fontSize: "clamp(11px,1.3vw,13px)", fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginTop: 6 }}>{t("manifesto.featureStrip.modelsTitle")}</p>
+                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.25)", marginTop: 3 }}>{t("manifesto.featureStrip.modelsBody")}</p>
                   </div>
                 </div>
 
                 <div className="feat-card-wrap fc fc-h">
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {["Free", "Pro", "Premium"].map((plan, i) => (
+                    {planLabels.map((plan, i) => (
                       <span key={plan} style={{ fontSize: "clamp(9px,1vw,11px)", fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: i === 2 ? "#ff6600" : i === 1 ? "rgba(255,255,255,0.08)" : "transparent", border: i === 0 ? "1px solid rgba(255,255,255,0.1)" : "none", color: i === 2 ? "#000" : i === 1 ? "#fff" : "rgba(255,255,255,0.35)" }}>{plan}</span>
                     ))}
                   </div>
                   <div>
-                    <p style={{ fontSize: "clamp(12px,1.4vw,15px)", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.3, marginBottom: 6 }}>Evolua conforme seu negócio cresce.</p>
-                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.25)", lineHeight: 1.5 }}>Comece grátis. Escale quando precisar.</p>
+                    <p style={{ fontSize: "clamp(12px,1.4vw,15px)", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.3, marginBottom: 6 }}>{t("manifesto.featureStrip.growthTitle")}</p>
+                    <p style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.25)", lineHeight: 1.5 }}>{t("manifesto.featureStrip.growthBody")}</p>
                   </div>
                 </div>
 

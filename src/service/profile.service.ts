@@ -121,15 +121,37 @@ export async function getMyRatings(): Promise<RatingsData> {
   return res.data;
 }
 
-export async function getRatingByContract(contractId: number): Promise<{
+export async function getRatingByContract(
+  contractId: number,
+  publicToken?: string,
+): Promise<{
   rated: boolean;
   stars?: number;
   comment?: string | null;
   raterName?: string;
   createdAt?: string;
 }> {
-  const res = await api.get(`/api/ratings/contract/${contractId}`);
-  return res.data;
+  const normalizedToken = (publicToken ?? "").trim().toLowerCase();
+  if (!normalizedToken) {
+    return { rated: false };
+  }
+
+  try {
+    const res = await api.get<{
+      rated: boolean;
+      stars?: number;
+      comment?: string | null;
+      raterName?: string;
+      createdAt?: string;
+    }>(`/api/ratings/contract/${contractId}?publicToken=${encodeURIComponent(normalizedToken)}`);
+    return res.data;
+  } catch (error: any) {
+    const status = error?.status ?? error?.response?.status;
+    if (status === 403) {
+      return { rated: false };
+    }
+    throw error;
+  }
 }
 
 export async function submitRating(data: {

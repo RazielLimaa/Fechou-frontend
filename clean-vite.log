@@ -1,0 +1,253 @@
+
+> dev
+> vite
+
+
+  [32m[1mVITE[22m v8.0.5[39m  [2mready in [0m[1m1296[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[2m00:04:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] scanning dependencies...
+[2m00:04:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] bundling dependencies...
+[2m00:06:34[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m00:06:51[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m00:14:13[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m00:14:20[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m00:14:20[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m00:14:20[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m00:14:20[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m00:14:20[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m00:39:28[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m00:52:21[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m00:52:32[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m00:57:39[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m01:01:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/propostas.tsx, /src/pages/contratos/editor.tsx, /src/pages/contratos/index.tsx[22m
+[2m01:01:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/propostas.tsx, /src/pages/contratos/editor.tsx, /src/pages/contratos/index.tsx[22m
+[2m01:02:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:02:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:03:41[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:04:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:04:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:04:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:05:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:08:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:09:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:11:02[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m01:12:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:12:19[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m01:13:26[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m01:13:33[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m01:15:09[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m01:15:16[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m01:15:37[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m01:15:40[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m01:15:49[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m01:16:29[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m01:16:35[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m01:17:02[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m01:23:15[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/propostas.tsx[22m
+[2m01:24:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/index.tsx[22m
+[2m01:24:55[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/index.tsx[22m
+[2m01:25:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/index.tsx[22m
+[2m01:25:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/index.tsx[22m
+[2m01:25:06[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:25:06[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <Context> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:25:08[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:25:08[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:25:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/index.tsx[22m
+[2m01:25:15[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:25:15[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:25:18[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/index.tsx[22m
+[2m01:25:21[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:25:21[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:25:24[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/index.tsx[22m
+[2m01:25:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:25:26[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:26:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/contratos/editor.tsx[22m
+[2m01:26:40[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:26:40[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:27:02[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:27:02[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:29:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/ProposalPdf.tsx[22m
+[2m01:29:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:29:56[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:30:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:30:00[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:32:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:32:55[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:32:59[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:32:59[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:33:03[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m01:36:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx[22m
+[2m01:36:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx[22m
+[2m01:38:10[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/ProposalPdf.tsx[22m
+[2m01:38:44[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m01:38:49[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:38:49[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <Context> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:39:05[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:39:05[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:42:36[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mPlease ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly.
+[2m01:42:58[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:42:58[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <Context> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:44:01[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:44:01[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:44:28[22m [36m[1m[vite][22m[39m [32mvite.config.ts changed, restarting server...[39m
+[2m01:44:31[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:44:31[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:44:33[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:44:33[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in one of your React components.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:44:37[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mTypeError[22m: Failed to fetch dynamically imported module: http://localhost:5173/src/pages/login.tsx
+[39m
+[2m01:44:37[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <Context> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m01:44:45[22m [36m[1m[vite][22m[39m server restarted.
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.0.32:[1m5173[22m/[39m
+[2m01:44:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] scanning dependencies...
+[2m01:44:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] bundling dependencies...
+[2m01:44:53[22m [36m[1m[vite][22m[39m [32mvite.config.ts changed, restarting server...[39m
+[2m01:45:32[22m [36m[1m[vite][22m[39m server restarted.
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[2m01:45:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] bundling dependencies...
+
+c:\Users\oslim\Desktop\Fechou-frontend\fechou-frontend>

@@ -1,0 +1,15 @@
+
+> typecheck
+> tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit
+
+src/pages/contratos/editor.tsx(1278,12): error TS17008: JSX element 'aside' has no corresponding closing tag.
+src/pages/contratos/editor.tsx(1463,13): error TS17002: Expected corresponding JSX closing tag for 'div'.
+src/pages/contratos/editor.tsx(1465,11): error TS1005: ')' expected.
+src/pages/contratos/editor.tsx(1675,9): error TS1128: Declaration or statement expected.
+src/pages/contratos/editor.tsx(1678,14): error TS1005: ';' expected.
+src/pages/contratos/editor.tsx(1679,22): error TS1005: ',' expected.
+src/pages/contratos/editor.tsx(1888,9): error TS1128: Declaration or statement expected.
+src/pages/contratos/editor.tsx(1889,7): error TS1109: Expression expected.
+src/pages/contratos/editor.tsx(1890,5): error TS1109: Expression expected.
+src/pages/contratos/editor.tsx(1891,3): error TS1109: Expression expected.
+src/pages/contratos/editor.tsx(1892,1): error TS1128: Declaration or statement expected.

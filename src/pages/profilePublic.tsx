@@ -25,18 +25,13 @@ import {
   Lock,
 } from "lucide-react";
 import { getPublicProfile, type UserProfile } from "../service/profile.service";
+import { SafeProfileAvatar } from "../components/profile/SafeProfileAvatar";
+import {
+  sanitizeProfileExternalUrl,
+  sanitizeProfileText,
+} from "../lib/profile-security";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function sanitize(raw: unknown, max = 120): string {
-  if (!raw) return "";
-  return String(raw)
-    .replace(/<[^>]*>/g, "")
-    .replace(/javascript:/gi, "")
-    .replace(/on\w+\s*=/gi, "")
-    .trim()
-    .slice(0, max);
-}
 
 function Stars({ n, size = 13 }: { n: number; size?: number }) {
   return (
@@ -197,7 +192,9 @@ export default function PerfilPublico() {
     { url: links?.instagram, Icon: Instagram,    label: "Instagram" },
     { url: links?.github,    Icon: Github,       label: "GitHub"    },
     { url: links?.behance,   Icon: ExternalLink, label: "Behance"   },
-  ].filter((l) => l.url);
+  ]
+    .map((l) => ({ ...l, url: sanitizeProfileExternalUrl(l.url) }))
+    .filter((l) => l.url);
 
   return (
     <Shell>
@@ -224,23 +221,25 @@ export default function PerfilPublico() {
 
           <div style={st.heroRow}>
             {/* Avatar */}
-            <div style={{ ...st.avatar, borderColor: `${accentColor}35` }}>
-              {profile.avatarUrl
-                ? <img src={sanitize(profile.avatarUrl, 2000)} alt={sanitize(profile.name)} style={st.avatarImg} />
-                : <span style={{ ...st.avatarInitial, color: accentColor }}>{sanitize(profile.name, 1).toUpperCase()}</span>
-              }
-            </div>
+            <SafeProfileAvatar
+              src={profile.avatarUrl}
+              name={profile.name}
+              accentColor={accentColor}
+              containerStyle={{ ...st.avatar, borderColor: `${accentColor}35` }}
+              imageStyle={st.avatarImg}
+              fallbackStyle={st.avatarInitial}
+            />
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h1 style={st.name}>{sanitize(profile.name, 60)}</h1>
+              <h1 style={st.name}>{sanitizeProfileText(profile.name, 60)}</h1>
               {profile.profession && (
-                <p style={st.profession}>{sanitize(profile.profession, 80)}</p>
+                <p style={st.profession}>{sanitizeProfileText(profile.profession, 80)}</p>
               )}
               <div style={st.metaRow}>
                 {profile.location && (
                   <span style={st.metaItem}>
                     <MapPin size={10} color="rgba(255,255,255,0.2)" />
-                    {sanitize(profile.location, 40)}
+                    {sanitizeProfileText(profile.location, 40)}
                   </span>
                 )}
                 <span style={st.metaItem}>
@@ -253,7 +252,7 @@ export default function PerfilPublico() {
           {profile.bio && (
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.18 }}
               style={st.bio}>
-              {sanitize(profile.bio, 400)}
+              {sanitizeProfileText(profile.bio, 400)}
             </motion.p>
           )}
 
@@ -261,7 +260,7 @@ export default function PerfilPublico() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.28 }}
               style={st.linksRow}>
               {socialLinks.map(({ url, Icon, label }) => (
-                <a key={label} href={sanitize(url!, 500)} target="_blank" rel="noopener noreferrer"
+                <a key={label} href={url!} target="_blank" rel="noopener noreferrer"
                   style={st.linkChip}
                   onMouseEnter={e => {
                     (e.currentTarget as HTMLElement).style.borderColor = `${accentColor}45`;
@@ -291,7 +290,7 @@ export default function PerfilPublico() {
           <div style={st.statBlock}>
             <p style={{ ...st.statLabel, color: accentColor }}>Score</p>
             <p style={{ ...st.statVal, color: accentColor }}>{score?.value ?? 0}</p>
-            <p style={st.statSub}>{sanitize(score?.level?.label ?? "—", 20)} {score?.level?.emoji ?? ""}</p>
+            <p style={st.statSub}>{sanitizeProfileText(score?.level?.label ?? "—", 20)} {score?.level?.emoji ?? ""}</p>
           </div>
 
           <div style={st.statSep} className="stat-sep" />
@@ -371,11 +370,11 @@ export default function PerfilPublico() {
                     <div style={st.reviewHeader}>
                       <div style={st.reviewAvatar}>
                         <span style={{ fontSize: 11, fontWeight: 800, color: accentColor }}>
-                          {sanitize(r.raterName, 1).toUpperCase()}
+                          {sanitizeProfileText(r.raterName, 1).toUpperCase()}
                         </span>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={st.reviewName}>{sanitize(r.raterName, 40)}</p>
+                        <p style={st.reviewName}>{sanitizeProfileText(r.raterName, 40)}</p>
                         <p style={st.reviewDate}>
                           {new Date(r.createdAt).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
                         </p>
@@ -383,7 +382,7 @@ export default function PerfilPublico() {
                       <Stars n={r.stars} size={11} />
                     </div>
                     {r.comment && (
-                      <p style={st.reviewComment}>"{sanitize(r.comment, 280)}"</p>
+                      <p style={st.reviewComment}>"{sanitizeProfileText(r.comment, 280)}"</p>
                     )}
                   </motion.div>
                 ))}

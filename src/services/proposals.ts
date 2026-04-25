@@ -18,6 +18,9 @@ export interface PaymentLinkResponse {
 }
 
 export interface PublicProposalResponse {
+  proposalId?: number | string;
+  contractId?: number | string;
+  value: number;
   userId: number;
   id: string;
   title: string;
@@ -35,6 +38,9 @@ export interface PublicProposalResponse {
   planId?: 'free' | 'pro' | 'premium';
   layoutConfig?: Record<string, any> | null;
   logoUrl?: string | null;
+  previewHtml?: string | null;
+  previewDocumentUrl?: string | null;
+  previewExpiresAt?: string | null;
   clauses?: {
     id: number;
     clauseId: number;
@@ -59,6 +65,26 @@ export interface PublicCheckoutRequest {
   failureUrl: string;
   pendingUrl: string;
   payerEmail?: string;
+}
+
+function normalizeTrustedAppReturnUrl(url: string): string {
+  const parsed = new URL(url, window.location.origin);
+  const isSameOrigin = parsed.origin === window.location.origin;
+  const isLocalHttp =
+    parsed.protocol === "http:" &&
+    isSameOrigin &&
+    ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+  const isHttps = parsed.protocol === "https:";
+
+  if (!isSameOrigin || (!isHttps && !isLocalHttp)) {
+    throw new Error("URL de retorno inválida.");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("URL de retorno inválida.");
+  }
+
+  parsed.hash = "";
+  return parsed.toString();
 }
 
 
@@ -86,7 +112,10 @@ export const proposalsService = {
     return data;
   },
   getPublic: async (token: string) => {
-    const { data } = await api.get<PublicProposalResponse>(`/api/proposals/public/${safePublicToken(token)}`);
+    const { data } = await api.get<PublicProposalResponse>(`/api/proposals/public/${safePublicToken(token)}`, {
+      cache: "no-store",
+      authMode: "optional",
+    });
     return data;
   },
   signContract: async (token: string, payload: SignContractRequest) => {
@@ -99,7 +128,13 @@ export const proposalsService = {
     return data;
   },
   checkout: async (token: string, payload: PublicCheckoutRequest) => {
-    const { data } = await api.post<{ checkoutUrl: string }>(`/api/payments/public/${safePublicToken(token)}/checkout`, payload);
+    const safePayload: PublicCheckoutRequest = {
+      successUrl: normalizeTrustedAppReturnUrl(payload.successUrl),
+      failureUrl: normalizeTrustedAppReturnUrl(payload.failureUrl),
+      pendingUrl: normalizeTrustedAppReturnUrl(payload.pendingUrl),
+      ...(payload.payerEmail ? { payerEmail: payload.payerEmail.trim().toLowerCase() } : {}),
+    };
+    const { data } = await api.post<{ checkoutUrl: string }>(`/api/payments/public/${safePublicToken(token)}/checkout`, safePayload);
     return data;
   },
 };

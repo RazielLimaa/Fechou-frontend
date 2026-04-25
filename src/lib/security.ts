@@ -1,19 +1,6 @@
 import { authStorage } from "./auth-storage";
+import { isValidCnpj, isValidCpf } from "./cpf-cnpj";
 // ── Security utilities ──────────────────────────────────────────────
-
-/**
- * Sanitize user input to prevent XSS attacks.
- * Strips HTML tags and encodes dangerous characters.
- */
-export function sanitizeInput(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#x27;")
-    .replace(/\//g, "&#x2F;");
-}
 
 /**
  * Validate that a string only contains safe characters (alphanumeric, spaces, common punctuation).
@@ -68,17 +55,17 @@ export const rateLimiter = new RateLimiter();
 
 /**
  * Generate a CSRF-like token for form submissions.
- * Stored in sessionStorage so it doesn't persist across sessions.
+ * Kept only in memory so it does not persist across navigations.
  */
+let legacyFormToken: string | null = null;
+
 export function getCsrfToken(): string {
-  let token = sessionStorage.getItem("_csrf_token");
-  if (!token) {
+  if (!legacyFormToken) {
     const array = new Uint8Array(32);
     crypto.getRandomValues(array);
-    token = Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
-    sessionStorage.setItem("_csrf_token", token);
+    legacyFormToken = Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
   }
-  return token;
+  return legacyFormToken;
 }
 
 /**
@@ -115,10 +102,6 @@ export function isValidPixKey(key: string): boolean {
   const trimmed = key.trim();
   if (trimmed.length === 0) return false;
 
-  // CPF: 11 digits or formatted
-  const cpfRegex = /^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/;
-  // CNPJ: 14 digits or formatted
-  const cnpjRegex = /^\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}$/;
   // Email
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   // Phone: +55 followed by DDD and number
@@ -127,13 +110,13 @@ export function isValidPixKey(key: string): boolean {
   const randomKeyRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   return (
-    cpfRegex.test(trimmed) ||
-    cnpjRegex.test(trimmed) ||
+    isValidCpf(trimmed) ||
+    isValidCnpj(trimmed) ||
     emailRegex.test(trimmed) ||
     phoneRegex.test(trimmed) ||
     randomKeyRegex.test(trimmed) ||
-    // Also allow plain digits for phone/CPF/CNPJ without formatting
-    /^\d{11,14}$/.test(trimmed)
+    // Also allow plain digits for phone, but CPF/CNPJ must pass verifier digits above.
+    /^\d{10,13}$/.test(trimmed)
   );
 }
 
@@ -165,13 +148,37 @@ export function secureLogout(): void {
 }
 
 /**
- * Validate and normalize redirect/payment URLs to avoid open-redirect and javascript: payloads.
+ * Validate and normalize redirect/payment URLs to avoid open redirects.
+ * Only same-origin app URLs and trusted Mercado Pago checkout URLs are allowed.
  */
 export function getSafeRedirectUrl(rawUrl: string): string | null {
   try {
     const parsed = new URL(rawUrl, window.location.origin);
-    if (!["https:", "http:"].includes(parsed.protocol)) return null;
+    const isSameOrigin = parsed.origin === window.location.origin;
+    const isLocalHttp =
+      parsed.protocol === "http:" &&
+      isSameOrigin &&
+      ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+    const isHttps = parsed.protocol === "https:";
+
+    if (!isHttps && !isLocalHttp) return null;
     if (parsed.username || parsed.password) return null;
+
+    if (isSameOrigin) return parsed.toString();
+
+    const trustedMercadoPagoHosts = [
+      "mercadopago.com",
+      "mercadopago.com.br",
+      "sandbox.mercadopago.com.br",
+      "mercadolibre.com",
+    ];
+    const hostname = parsed.hostname.toLowerCase();
+    const isTrustedMercadoPago = trustedMercadoPagoHosts.some(
+      (host) => hostname === host || hostname.endsWith(`.${host}`),
+    );
+
+    if (!isTrustedMercadoPago) return null;
+
     return parsed.toString();
   } catch {
     return null;

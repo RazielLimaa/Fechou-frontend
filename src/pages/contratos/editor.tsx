@@ -1,30 +1,64 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams, useLocation } from "wouter";
-import { authStorage } from "../../lib/auth-storage";
+import { apiFetch } from "../../service/api";
 import {
-  Search, Plus, ArrowLeft, FileDown, Loader2, GripVertical,
-  Trash2, Eye, Library, AlertCircle, CheckCircle2, Save, X,
-  Palette, Type, Image, Lock, Crown, Sliders, ChevronDown,
-  RotateCcw, Upload, Pen, Eraser, PenLine,
+  ArrowLeft, FileDown, Loader2,
+  Trash2, Eye, AlertCircle, CheckCircle2, Save, X,
+  Lock, RotateCcw, Pen, Eraser, PenLine, Sparkles, SlidersHorizontal,
+  ZoomIn, ZoomOut, GripVertical,
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
+import { Badge } from "../../components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "../../components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Textarea } from "../../components/ui/textarea";
-import { ScrollArea } from "../../components/ui/scroll-area";
 import { Skeleton } from "../../components/ui/skeleton";
 import { toast } from "sonner";
 import {
-  listClauses, addClause, deleteClause, updateClause,
-  reorderClauses, generatePdf, getContract, updateLayout, uploadLogo, removeLogo,
-  type ContractClause, type ClauseTemplate, type Contract,
-  CONTRACT_TYPE_LABELS, PAYMENT_FORM_LABELS,
+  fetchClauses, fetchLegalBlueprint,
+  addClause, deleteClause, updateClause,
+  reorderClauses, generatePdf, getContract, renderContract, updateLayout,
+  type ContractClause, type ClauseTemplate, type Contract, type ContractClauseSuggestion,
+  type ContractLayout, type ContractLayoutBlockId, type ContractLayoutBlockConfig,
 } from "../../service/contracts";
-import { getProposalById } from "../../service/proposals";
 import { EditorTour } from "../../components/EditorTour";
 import { getMyPlan, type PlanId } from "../../service/payment";
+import { isStepUpCancelledError, runWithStepUp } from "../../service/step-up";
+import {
+  buildLegalBlueprintParams,
+  mergeBlueprintDefaults,
+  normalizeAutoGeneratePayload,
+  parseAuthenticationMethodsInput,
+} from "../../lib/legal-contracts";
+import { mergeContractInsights } from "../../lib/api/contracts";
+import { getFriendlyApiErrorMessage } from "../../lib/api/errors";
+import {
+  adaptAutoGenerateResponseToMcc,
+  runMccAutoGenerate,
+  type MccRunResult,
+} from "../../lib/api/mcc";
+import { getPreviewRefreshDelay } from "../../lib/contract-preview";
+import { LegalContextSection } from "../../components/contracts/legal/LegalContextSection";
+import { LegalBlueprintDialog } from "../../components/contracts/legal/LegalBlueprintDialog";
+import { ContractLayoutPanel, DEFAULT_EDITOR_LAYOUT } from "../../components/contracts/legal/ContractLayoutPanel";
+import { ContractClauseInspector, ContractClauseNavigator } from "../../components/contracts/legal/ContractClauseWorkspace";
+import type {
+  AutoGenerateContractPayload,
+  AutoGenerateContractResponse,
+  LegalBlueprintResponse,
+  LegalContractModel,
+} from "../../types/legal-contracts";
+import { LanguageToggle } from "../../components/LanguageToggle";
+import { useTranslation } from "react-i18next";
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -32,55 +66,130 @@ import { getMyPlan, type PlanId } from "../../service/payment";
 
 type EditorState = "idle" | "loading" | "saving" | "generating-pdf" | "error";
 type RightPanelTab = "clausula" | "aparencia";
+type ClauseExplorerTab = "contrato" | "sugestoes" | "preview";
+type AutoGenerateStatus = "idle" | "loading" | "success" | "error";
+type PreviewRefreshMode = "initial" | "manual" | "mutation";
+type ProtectedPreviewRefreshReason = PreviewRefreshMode | "expired" | "asset-error";
 
-export interface LayoutCustomization {
-  primaryColor: string;
-  fontFamily: string;
-  logoUrl: string | null;
-  showFechouBranding: boolean;
-  blocks: BlockConfig[];
-  customTextBlocks: CustomTextBlock[];
-}
+const BLOCK_IDS: ContractLayoutBlockId[] = [
+  "hero",
+  "intro",
+  "summary",
+  "scope",
+  "clauses",
+  "signatures",
+  "footer",
+];
 
-interface BlockConfig {
-  id: string;
-  visible: boolean;
-  order: number;
-}
-
-interface CustomTextBlock {
-  id: string;
-  title: string;
-  content: string;
-}
-
-const DEFAULT_LAYOUT: LayoutCustomization = {
-  primaryColor: "#ff6600",
-  fontFamily: "inter",
-  logoUrl: null,
-  showFechouBranding: true,
-  blocks: [
-    { id: "header", visible: true, order: 0 },
-    { id: "parties", visible: true, order: 1 },
-    { id: "conditions", visible: true, order: 2 },
-    { id: "scope", visible: true, order: 3 },
-    { id: "clauses", visible: true, order: 4 },
-    { id: "signatures", visible: true, order: 5 },
-  ],
-  customTextBlocks: [],
+const BLOCK_LABELS: Record<ContractLayoutBlockId, string> = {
+  hero: "Hero",
+  intro: "Introducao",
+  summary: "Resumo",
+  scope: "Escopo",
+  clauses: "Clausulas",
+  signatures: "Assinaturas",
+  footer: "Rodape",
 };
 
-const FONT_OPTIONS = [
-  { value: "inter", label: "Inter" },
-  { value: "georgia", label: "Georgia" },
-  { value: "roboto", label: "Roboto" },
-  { value: "playfair", label: "Playfair Display" },
-];
+const DEFAULT_BLOCKS: Record<ContractLayoutBlockId, ContractLayoutBlockConfig> = {
+  hero: { enabled: true, title: "Contrato", content: "" },
+  intro: { enabled: true, title: "Introducao", content: "" },
+  summary: { enabled: true, title: "Resumo", content: "" },
+  scope: { enabled: true, title: "Escopo", content: "" },
+  clauses: { enabled: true, title: "Clausulas", content: "" },
+  signatures: { enabled: true, title: "Assinaturas", content: "" },
+  footer: { enabled: true, title: "Rodape", content: "" },
+};
 
-const PRESET_COLORS = [
-  "#ff6600", "#e53535", "#2563eb", "#16a34a",
-  "#7c3aed", "#0891b2", "#d97706", "#111111",
-];
+const DEFAULT_LAYOUT: ContractLayout = DEFAULT_EDITOR_LAYOUT;
+
+function normalizeStringMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, raw]) => {
+    const normalizedKey = key.trim();
+    if (!normalizedKey) return acc;
+    acc[normalizedKey] = typeof raw === "string" ? raw : String(raw ?? "");
+    return acc;
+  }, {});
+}
+
+function mergeLayoutState(current: ContractLayout, patch: Partial<ContractLayout>): ContractLayout {
+  return {
+    ...current,
+    ...patch,
+    preview: patch.preview ? { ...(current.preview ?? {}), ...patch.preview } : current.preview,
+    appearance: patch.appearance ? { ...(current.appearance ?? {}), ...patch.appearance } : current.appearance,
+    blocks: patch.blocks
+      ? {
+          ...(current.blocks ?? {}),
+          ...Object.entries(patch.blocks).reduce<Partial<Record<ContractLayoutBlockId, ContractLayoutBlockConfig>>>(
+            (acc, [key, value]) => {
+              const blockId = key as ContractLayoutBlockId;
+              acc[blockId] = {
+                ...(current.blocks?.[blockId] ?? {}),
+                ...(value ?? {}),
+              };
+              return acc;
+            },
+            {},
+          ),
+        }
+      : current.blocks,
+    customVariables: patch.customVariables ? { ...patch.customVariables } : current.customVariables,
+    contractContext: patch.contractContext ? { ...patch.contractContext } : current.contractContext,
+  };
+}
+
+function normalizeLayout(rawLayout: unknown, logoUrl?: string | null): ContractLayout {
+  const source = rawLayout && typeof rawLayout === "object" ? rawLayout as Record<string, unknown> : {};
+  const appearance = source.appearance && typeof source.appearance === "object"
+    ? source.appearance as Record<string, unknown>
+    : source;
+  const preview = source.preview && typeof source.preview === "object"
+    ? source.preview as Record<string, unknown>
+    : {};
+  const blocksSource = source.blocks && typeof source.blocks === "object"
+    ? source.blocks as Record<string, unknown>
+    : {};
+
+  const normalizedBlocks = BLOCK_IDS.reduce<Record<ContractLayoutBlockId, ContractLayoutBlockConfig>>((acc, blockId) => {
+    const rawBlock = blocksSource[blockId];
+    const block = rawBlock && typeof rawBlock === "object" ? rawBlock as Record<string, unknown> : {};
+    acc[blockId] = {
+      ...DEFAULT_BLOCKS[blockId],
+      enabled: typeof block.enabled === "boolean" ? block.enabled : DEFAULT_BLOCKS[blockId].enabled,
+      title: typeof block.title === "string" ? block.title : DEFAULT_BLOCKS[blockId].title,
+      content: typeof block.content === "string" ? block.content : DEFAULT_BLOCKS[blockId].content,
+    };
+    return acc;
+  }, {} as Record<ContractLayoutBlockId, ContractLayoutBlockConfig>);
+
+  return mergeLayoutState(DEFAULT_LAYOUT, {
+    preview: {
+      includeClauseIds: Array.isArray(preview.includeClauseIds) ? preview.includeClauseIds.map(String) : [],
+      hiddenClauseIds: Array.isArray(preview.hiddenClauseIds) ? preview.hiddenClauseIds.map(String) : [],
+    },
+    appearance: {
+      primaryColor: typeof appearance.primaryColor === "string" ? appearance.primaryColor : DEFAULT_LAYOUT.appearance?.primaryColor,
+      secondaryColor: typeof appearance.secondaryColor === "string" ? appearance.secondaryColor : DEFAULT_LAYOUT.appearance?.secondaryColor,
+      paperTint: typeof appearance.paperTint === "string" ? appearance.paperTint : DEFAULT_LAYOUT.appearance?.paperTint,
+      fontFamily: typeof appearance.fontFamily === "string"
+        ? appearance.fontFamily as NonNullable<ContractLayout["appearance"]>["fontFamily"]
+        : DEFAULT_LAYOUT.appearance?.fontFamily,
+      fontScale: typeof appearance.fontScale === "number" ? appearance.fontScale : DEFAULT_LAYOUT.appearance?.fontScale,
+      contentWidth: typeof appearance.contentWidth === "number" ? appearance.contentWidth : DEFAULT_LAYOUT.appearance?.contentWidth,
+      borderRadius: typeof appearance.borderRadius === "number" ? appearance.borderRadius : DEFAULT_LAYOUT.appearance?.borderRadius,
+      sectionSpacing: typeof appearance.sectionSpacing === "number" ? appearance.sectionSpacing : DEFAULT_LAYOUT.appearance?.sectionSpacing,
+      showSummaryCards: typeof appearance.showSummaryCards === "boolean" ? appearance.showSummaryCards : DEFAULT_LAYOUT.appearance?.showSummaryCards,
+      showContractNumber: typeof appearance.showContractNumber === "boolean" ? appearance.showContractNumber : DEFAULT_LAYOUT.appearance?.showContractNumber,
+      showFechouBranding: typeof appearance.showFechouBranding === "boolean" ? appearance.showFechouBranding : DEFAULT_LAYOUT.appearance?.showFechouBranding,
+      logoUrl: typeof appearance.logoUrl === "string" ? appearance.logoUrl : logoUrl ?? DEFAULT_LAYOUT.appearance?.logoUrl ?? null,
+    },
+    blocks: normalizedBlocks,
+    customVariables: normalizeStringMap(source.customVariables),
+    contractContext: normalizeStringMap(source.contractContext),
+  });
+}
 
 const CATEGORIES: { label: string; value: string }[] = [
   { label: "Todos", value: "todos" },
@@ -95,216 +204,66 @@ function hasPlan(current: PlanId, required: PlanId) {
   return PLAN_ORDER[current] >= PLAN_ORDER[required];
 }
 
-// ── Cache de assinatura por sessão (módulo-level) ──────────────────────────
-const _sigCache = new Map<number, string | "none">();
-const _provContractCache = new Map<number, string | "none">();
-let _provProfileCached: boolean | null = null;
+const PREVIEW_ASSET_RETRY_LIMIT = 3;
+const PREVIEW_ASSET_RETRY_BASE_DELAY_MS = 350;
+const PREVIEW_ASSET_RETRY_MAX_DELAY_MS = 2_500;
+const PREVIEW_UPDATE_DEBOUNCE_MS = 140;
+const PREVIEW_BASE_WIDTH = 794;
+const PREVIEW_BASE_HEIGHT = 1123;
+const PREVIEW_PAGE_GAP = 36;
+const PREVIEW_ABNT_TOP_MARGIN = 113;
+const PREVIEW_ABNT_BOTTOM_MARGIN = 76;
+const PREVIEW_ABNT_SAFE_CONTENT_HEIGHT = PREVIEW_BASE_HEIGHT - PREVIEW_ABNT_TOP_MARGIN - PREVIEW_ABNT_BOTTOM_MARGIN;
+const PREVIEW_PAGE_BREAK_GUARD = 10;
+const PREVIEW_MIN_PAGE_ADVANCE = 320;
+const PREVIEW_ZOOM_MIN = 0.6;
+const PREVIEW_ZOOM_MAX = 2.4;
+const PREVIEW_ZOOM_STEP = 0.15;
+const PREVIEW_SIGNATURE_UNAVAILABLE_MESSAGE = "Assinatura indisponível no momento. Atualize o preview em alguns instantes.";
+const CLAUSE_NAV_MIN_WIDTH = 220;
+const CLAUSE_NAV_MAX_WIDTH = 420;
+const CLAUSE_NAV_DEFAULT_WIDTH = 240;
 
-// ─────────────────────────────────────────────────────────────
-// CONTRACT HTML BUILDER
-// ─────────────────────────────────────────────────────────────
+function normalizePreviewZoom(value: number): number {
+  return Math.min(PREVIEW_ZOOM_MAX, Math.max(PREVIEW_ZOOM_MIN, Number(value.toFixed(2))));
+}
 
-function buildContractHtml(
-  contract: Contract,
-  clauses: ContractClause[],
-  layout: LayoutCustomization,
-  isPro: boolean,
-  isPremium: boolean,
-  signatureObjectUrl: string | null = null,
-  providerSignatureUrl: string | null = null,
-): string {
-  const color = isPro ? layout.primaryColor : "#ff6600";
-  const fontMap: Record<string, string> = {
-    inter: "'Inter', sans-serif",
-    georgia: "Georgia, serif",
-    roboto: "'Roboto', sans-serif",
-    playfair: "'Playfair Display', serif",
-  };
-  const font = isPro ? (fontMap[layout.fontFamily] ?? fontMap.inter) : fontMap.inter;
+function buildAbntPageOffsets(contentHeight: number, candidates: number[]): number[] {
+  const normalizedContentHeight = Math.max(PREVIEW_BASE_HEIGHT, Math.ceil(contentHeight));
+  const sortedCandidates = [...new Set(candidates.map((candidate) => Math.round(candidate)))]
+    .filter((candidate) => candidate > 0 && candidate < normalizedContentHeight)
+    .sort((a, b) => a - b);
+  const offsets = [0];
+  let currentOffset = 0;
 
-  const fmt = (v: string | number) => {
-    const n = typeof v === "string" ? parseFloat(v.replace(/[^\d.-]/g, "")) : v;
-    return isNaN(n)
-      ? String(v)
-      : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
-  };
-  const fmtDate = (d: string) =>
-    d
-      ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).format(new Date(d))
-      : d;
+  while (currentOffset + PREVIEW_ABNT_SAFE_CONTENT_HEIGHT < normalizedContentHeight) {
+    const idealBreak = currentOffset + PREVIEW_ABNT_SAFE_CONTENT_HEIGHT;
+    const minBreak = currentOffset + PREVIEW_MIN_PAGE_ADVANCE;
+    const maxBreak = idealBreak - PREVIEW_PAGE_BREAK_GUARD;
+    const safeBreak = [...sortedCandidates]
+      .reverse()
+      .find((candidate) => candidate >= minBreak && candidate <= maxBreak);
+    const nextOffset = safeBreak ?? maxBreak;
 
-  const contractNumber = isPro && !layout.showFechouBranding
-    ? `CTR-${String(contract.id).padStart(6, "0")}`
-    : `FECH-${String(contract.id).padStart(6, "0")}`;
-  const today = fmtDate(new Date().toISOString());
+    if (nextOffset <= currentOffset) break;
+    offsets.push(nextOffset);
+    currentOffset = nextOffset;
+  }
 
-  const watermarkRows = Array.from({ length: 40 }).map((_, i) => {
-    const row = Math.floor(i / 5);
-    const col = i % 5;
-    return `<span style="position:absolute;top:${row * 22 - 10}%;left:${col * 22 - 5}%;transform:rotate(-35deg);font-size:28px;font-weight:900;color:rgba(255,102,0,0.07);letter-spacing:0.08em;white-space:nowrap;user-select:none;">FECHOU!</span>`;
-  }).join("");
-  const watermark = !isPro
-    ? `<div style="position:fixed;inset:0;z-index:10;pointer-events:none;overflow:hidden;">${watermarkRows}</div>`
-    : "";
+  return offsets;
+}
 
-  const logoHtml = isPro && layout.logoUrl
-    ? `<img src="${layout.logoUrl}" style="height:36px;object-fit:contain;margin-bottom:6px;" />`
-    : isPro && !layout.showFechouBranding
-      ? ``
-      : `<div style="font-size:28px;font-weight:900;letter-spacing:-0.02em;color:#111;">FECHOU<span style="color:${color}">!</span></div>
-         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.25em;color:#888;margin-top:2px;">Plataforma de Contratos</div>`;
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
-  // Premium pode remover totalmente o branding "Fechou"
-  // Se for Premium e showFechouBranding for false, remove TUDO (sem nenhum texto)
-  // Se for Pro (mas não Premium) ou se showFechouBranding for true, mostra o branding
-  const brandingLine = isPro && !layout.showFechouBranding
-    ? ``
-    : `<div style="font-size:10px;color:#ccc;text-transform:uppercase;letter-spacing:0.2em;">FECHOU! — fechou.app</div>`;
-
-  const clausesHtml = clauses.length > 0 ? `
-    <div style="margin-bottom:32px;">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.3em;color:${color};font-weight:800;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid ${color}33;">
-        Cláusulas Contratuais
-        <span style="margin-left:8px;background:#f0f0f0;color:#888;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;">${clauses.length}</span>
-      </div>
-      ${clauses.map((c, i) => `
-        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #f0f0f0;">
-          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;">
-            <span style="background:#111;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:3px;flex-shrink:0;">${i + 1}</span>
-            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#111;">${c.title}</span>
-          </div>
-          <p style="font-size:12px;line-height:1.8;color:#444;text-align:justify;margin:0;padding-left:20px;">
-            ${(c.customContent || c.content)
-              .replace(/\{\{cliente\}\}/g, contract.clientName)
-              .replace(/\{\{valor\}\}/g, fmt(contract.value))
-              .replace(/\{\{data_execucao\}\}/g, fmtDate(contract.executionDate))
-              .replace(/\{\{forma_pagamento\}\}/g, PAYMENT_FORM_LABELS[contract.paymentForm] ?? contract.paymentForm)
-              .replace(/\{\{escopo\}\}/g, contract.scope)}
-          </p>
-        </div>`).join("")}
-    </div>` : "";
-
-  const customBlocksHtml = isPro && layout.customTextBlocks?.length > 0
-    ? layout.customTextBlocks.map(b => `
-      <div style="margin-bottom:32px;">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.3em;color:${color};font-weight:800;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid ${color}33;">${b.title}</div>
-        <p style="font-size:12px;line-height:1.8;color:#444;">${b.content}</p>
-      </div>`).join("")
-    : "";
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Roboto:wght@400;500;700&family=Playfair+Display:wght@400;700;800&display=swap" rel="stylesheet"/>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: ${font}; background: #fff; color: #111; }
-</style>
-</head>
-<body>
-<div style="max-width:800px;margin:0 auto;min-height:1122px;position:relative;background:#fff;">
-  ${watermark}
-  <div style="position:relative;z-index:20;padding:48px 52px;">
-
-    <!-- Cabeçalho -->
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;padding-bottom:24px;border-bottom:2px solid ${color};">
-      <div>${logoHtml}</div>
-      <div style="text-align:right;">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#aaa;">Nº do Contrato</div>
-        <div style="font-size:18px;font-weight:800;color:#111;margin-top:2px;">${contractNumber}</div>
-        <div style="margin-top:6px;display:inline-block;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;border:1px solid ${color};color:${color};">
-          ${contract.status === "finalizado" ? "Finalizado" : contract.status === "assinado" ? "Assinado" : "Em Edição"}
-        </div>
-      </div>
-    </div>
-
-    <!-- Título -->
-    <div style="margin-bottom:36px;">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.3em;color:#aaa;margin-bottom:6px;">Contrato de Serviço</div>
-      <div style="font-size:26px;font-weight:800;color:#111;line-height:1.2;">
-        ${CONTRACT_TYPE_LABELS[contract.contractType] ?? "Prestação de Serviços"}
-      </div>
-    </div>
-
-    <!-- Grid de informações -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:36px;">
-      <div style="padding:14px 16px;background:#f8f8f8;border-radius:10px;border:1px solid #eee;">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.25em;color:#aaa;margin-bottom:4px;">Cliente</div>
-        <div style="font-weight:700;font-size:14px;color:${color};">${contract.clientName}</div>
-      </div>
-      <div style="padding:14px 16px;background:#f8f8f8;border-radius:10px;border:1px solid #eee;">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.25em;color:#aaa;margin-bottom:4px;">Valor do Contrato</div>
-        <div style="font-weight:700;font-size:14px;color:${color};">${fmt(contract.value)}</div>
-      </div>
-      <div style="padding:14px 16px;background:#f8f8f8;border-radius:10px;border:1px solid #eee;">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.25em;color:#aaa;margin-bottom:4px;">Data de Execução</div>
-        <div style="font-weight:700;font-size:14px;color:#111;">${fmtDate(contract.executionDate)}</div>
-      </div>
-      <div style="padding:14px 16px;background:#f8f8f8;border-radius:10px;border:1px solid #eee;">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.25em;color:#aaa;margin-bottom:4px;">Pagamento</div>
-        <div style="font-weight:700;font-size:14px;color:#111;">${PAYMENT_FORM_LABELS[contract.paymentForm] ?? contract.paymentForm}</div>
-      </div>
-    </div>
-
-    <!-- Escopo -->
-    <div style="margin-bottom:32px;">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.3em;color:${color};font-weight:800;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid ${color}33;">Escopo de Trabalho</div>
-      <p style="font-size:13px;line-height:1.8;color:#333;text-align:justify;">${contract.scope}</p>
-    </div>
-
-    ${clausesHtml}
-    ${customBlocksHtml}
-
-    <!-- Assinaturas -->
-    <div style="margin-top:40px;padding-top:24px;border-top:2px solid #111;">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.3em;color:${color};font-weight:800;text-align:center;margin-bottom:28px;">Assinatura e Aceite</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;">
-        <div style="text-align:center;">
-          ${providerSignatureUrl
-            ? `<div style="height:64px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:4px;">
-                 <img src="${providerSignatureUrl}" alt="Assinatura do contratado" style="max-height:56px;max-width:100%;object-fit:contain;" />
-               </div>
-               <div style="border-bottom:1.5px solid #333;margin-bottom:10px;"></div>
-               <div style="display:inline-flex;align-items:center;gap:4px;font-size:9px;color:#16a34a;font-weight:700;letter-spacing:0.08em;margin-bottom:6px;">
-                 <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="6" fill="#16a34a"/><path d="M3.5 6.5l2 2 3-4" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                 Assinado digitalmente
-               </div>`
-            : `<div style="height:48px;border-bottom:1.5px solid #333;margin-bottom:10px;"></div>`
-          }
-          <div style="font-size:12px;font-weight:700;color:#111;">Prestador de Serviços</div>
-          <div style="font-size:10px;color:#999;margin-top:2px;">Contratado</div>
-        </div>
-        <div style="text-align:center;">
-          ${signatureObjectUrl
-            ? `<div style="height:64px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:4px;">
-                 <img src="${signatureObjectUrl}" alt="Assinatura do contratante" style="max-height:56px;max-width:100%;object-fit:contain;" />
-               </div>
-               <div style="border-bottom:1.5px solid #333;margin-bottom:10px;"></div>
-               <div style="display:inline-flex;align-items:center;gap:4px;font-size:9px;color:#16a34a;font-weight:700;letter-spacing:0.08em;margin-bottom:6px;">
-                 <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="6" fill="#16a34a"/><path d="M3.5 6.5l2 2 3-4" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                 Assinado digitalmente
-               </div>`
-            : `<div style="height:48px;display:flex;align-items:center;justify-content:center;border-bottom:1.5px dashed #d1d5db;margin-bottom:10px;">
-                 <span style="font-size:9px;color:#d1d5db;letter-spacing:0.18em;text-transform:uppercase;">Aguardando assinatura</span>
-               </div>`
-          }
-          <div style="font-size:12px;font-weight:700;color:#111;">${contract.clientName}</div>
-          <div style="font-size:10px;color:#999;margin-top:2px;">Contratante</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Rodapé -->
-    <div style="margin-top:40px;padding-top:16px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
-      ${brandingLine}
-      <div style="font-size:10px;color:#ccc;">${contractNumber} · ${today}</div>
-    </div>
-
-  </div>
-</div>
-</body>
-</html>`;
+function buildPreviewHtmlFromUrl(url: string): string {
+  const safeUrl = escapeHtmlAttribute(url);
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;background:#fff;overflow:hidden}iframe{width:100%;height:100%;border:0;display:block}</style></head><body><iframe src="${safeUrl}" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></body></html>`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -329,6 +288,44 @@ function ClauseSkeletons() {
   );
 }
 
+function ClauseCatalogMetadata({ template }: { template: ClauseTemplate }) {
+  const appliesTo = template.appliesTo?.filter(Boolean) ?? [];
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {template.required && (
+        <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+          Obrigatoria
+        </Badge>
+      )}
+      {template.riskLevel && (
+        <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-300 capitalize">
+          Risco {template.riskLevel}
+        </Badge>
+      )}
+      {template.version && (
+        <Badge variant="outline" className="border-border/40 bg-background/60 text-muted-foreground">
+          Versao {template.version}
+        </Badge>
+      )}
+      {template.status && (
+        <Badge variant="outline" className="border-border/40 bg-background/60 text-muted-foreground">
+          {template.status}
+        </Badge>
+      )}
+      {appliesTo.slice(0, 2).map((item) => (
+        <Badge
+          key={`${template.id}-${item}`}
+          variant="outline"
+          className="border-blue-500/20 bg-blue-500/5 text-blue-300"
+        >
+          {item}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // NORMALIZE
 // ─────────────────────────────────────────────────────────────
@@ -346,6 +343,14 @@ function normalizeContract(raw: any): Contract {
     scope: raw.scope ?? raw.serviceScope,
     status: raw.status,
     createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+    suggestedClauses: (raw.suggestedClauses ?? []).map((item: any) => ({
+      id: String(item.id ?? ""),
+      title: String(item.title ?? ""),
+    })).filter((item: ContractClauseSuggestion) => item.id),
+    layout: normalizeLayout(raw.layout ?? raw.layoutConfig, raw.logoUrl ?? raw.layout?.appearance?.logoUrl ?? raw.layoutConfig?.appearance?.logoUrl ?? null),
+    layoutConfig: normalizeLayout(raw.layout ?? raw.layoutConfig, raw.logoUrl ?? raw.layout?.appearance?.logoUrl ?? raw.layoutConfig?.appearance?.logoUrl ?? null),
+    logoUrl: raw.logoUrl ?? null,
     clauses: (raw.clauses ?? []).map((c: any) => ({
       id: c.id,
       clauseId: c.clauseId,
@@ -362,331 +367,7 @@ function normalizeContract(raw: any): Contract {
 // APPEARANCE PANEL
 // ─────────────────────────────────────────────────────────────
 
-interface AppearancePanelProps {
-  layout: LayoutCustomization;
-  onChange: (l: LayoutCustomization) => void;
-  planId: PlanId;
-  contractId: number;
-}
-
-function AppearancePanel({ layout, onChange, planId, contractId }: AppearancePanelProps) {
-  const isPro = hasPlan(planId, "pro");
-  const isPremium = hasPlan(planId, "premium");
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [removingLogo, setRemovingLogo] = useState(false);
-  const [expandedBlock, setExpandedBlock] = useState<string | null>(null);
-  const [inputKey, setInputKey] = useState(0); // Key para forçar reset do input
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const set = (patch: Partial<LayoutCustomization>) => onChange({ ...layout, ...patch });
-
-  const hasValidImageSignature = async (file: File): Promise<boolean> => {
-    const buf = await file.slice(0, 12).arrayBuffer();
-    const b = new Uint8Array(buf);
-    const isPng = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
-    const isJpeg = b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
-    const isWebp = b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50;
-    return isPng || isJpeg || isWebp;
-  };
-
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
-    const MAX_MB = 2;
-    if (!ALLOWED.includes(file.type)) {
-      toast.error("Tipo não permitido. Use JPEG, PNG ou WebP.");
-      setInputKey(prev => prev + 1);
-      return;
-    }
-    if (file.size > MAX_MB * 1024 * 1024) {
-      toast.error(`Arquivo muito grande. Limite: ${MAX_MB} MB.`);
-      setInputKey(prev => prev + 1);
-      return;
-    }
-    if (!(await hasValidImageSignature(file))) {
-      toast.error("Arquivo inválido. Envie uma imagem JPEG, PNG ou WebP válida.");
-      setInputKey(prev => prev + 1);
-      return;
-    }
-
-    setUploadingLogo(true);
-    try {
-      const result = await uploadLogo(contractId, file);
-      set({ logoUrl: result.logoUrl });
-      toast.success("Logo enviada com sucesso!");
-    } catch (err: any) {
-      toast.error(err?.message || "Não foi possível enviar a logo.");
-    } finally {
-      setUploadingLogo(false);
-      // Força reset do input incrementando a key
-      setInputKey(prev => prev + 1);
-    }
-  };
-
-  const handleLogoRemove = async () => {
-    setRemovingLogo(true);
-    try {
-      await removeLogo(contractId);
-      set({ logoUrl: null });
-      toast.success("Logo removida.");
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao remover logo.");
-    } finally {
-      setRemovingLogo(false);
-    }
-  };
-
-  const addCustomBlock = () => {
-    const newBlock: CustomTextBlock = {
-      id: `custom_${Date.now()}`,
-      title: "Nova Seção",
-      content: "Conteúdo da seção personalizada.",
-    };
-    set({ customTextBlocks: [...(layout.customTextBlocks ?? []), newBlock] });
-  };
-
-  const removeCustomBlock = (id: string) =>
-    set({ customTextBlocks: layout.customTextBlocks.filter(b => b.id !== id) });
-
-  const updateCustomBlock = (id: string, patch: Partial<CustomTextBlock>) =>
-    set({ customTextBlocks: layout.customTextBlocks.map(b => b.id === id ? { ...b, ...patch } : b) });
-
-  if (!isPro) {
-    return (
-      <div className="p-4 flex flex-col gap-4">
-        <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <Lock size={14} className="text-yellow-400" />
-            <span className="text-xs font-semibold text-yellow-200">Plano Free</span>
-          </div>
-          <p className="text-xs text-yellow-300/70 leading-relaxed">
-            Personalize o visual do seu contrato com o plano <strong>Pro</strong> ou <strong>Premium</strong>.
-          </p>
-          <Link href="/system">
-            <button className="mt-1 w-full text-xs py-2 rounded-lg bg-yellow-500/20 border border-yellow-500/40 text-yellow-200 hover:bg-yellow-500/30 transition-colors">
-              Ver planos →
-            </button>
-          </Link>
-        </div>
-        <div className="space-y-3 opacity-40 pointer-events-none select-none">
-          <div className="h-8 rounded-lg bg-card/60 border border-border/30" />
-          <div className="h-8 rounded-lg bg-card/60 border border-border/30" />
-          <div className="grid grid-cols-4 gap-1.5">
-            {PRESET_COLORS.map(c => (
-              <div key={c} className="h-7 rounded-md" style={{ background: c }} />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <ScrollArea className="flex-1">
-      <div className="p-4 space-y-5">
-
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold ${
-          isPremium
-            ? "bg-purple-500/10 border-purple-500/30 text-purple-300"
-            : "bg-blue-500/10 border-blue-500/30 text-blue-300"
-        }`}>
-          <Crown size={12} />
-          {isPremium ? "Premium — Personalização total" : "Pro — Personalização avançada"}
-        </div>
-
-        <section className="space-y-2">
-          <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-            <Image size={11} /> Logo
-          </label>
-          {layout.logoUrl ? (
-            <div className="relative rounded-lg border border-border/40 bg-white p-3 flex items-center justify-center min-h-[60px]">
-              <img src={layout.logoUrl} className="max-h-10 object-contain" alt="Logo" />
-              <button
-                onClick={handleLogoRemove}
-                disabled={removingLogo}
-                className="absolute top-1.5 right-1.5 text-muted-foreground/50 hover:text-destructive transition-colors disabled:opacity-40"
-                title="Remover logo"
-              >
-                {removingLogo ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingLogo}
-              className="flex items-center justify-center gap-2 h-12 w-full rounded-lg border border-dashed border-border/50 bg-card/30 text-xs text-muted-foreground hover:border-accent/50 hover:text-accent transition-all"
-            >
-              {uploadingLogo ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-              {uploadingLogo ? "Enviando…" : "Enviar logo"}
-            </button>
-          )}
-          <input key={inputKey} ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-
-          {/* Pro e Premium podem remover menções da Fechou no documento */}
-          <label className="flex items-center gap-2 cursor-pointer" onClick={() => set({ showFechouBranding: !layout.showFechouBranding })}>
-            <div className={`w-8 h-4 rounded-full transition-colors flex items-center px-0.5 ${layout.showFechouBranding ? "bg-accent" : "bg-muted"}`}>
-              <div className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${layout.showFechouBranding ? "translate-x-4" : "translate-x-0"}`} />
-            </div>
-            <span className="text-xs text-muted-foreground">Mostrar menções da Fechou</span>
-          </label>
-        </section>
-
-        <section className="space-y-2">
-          <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-            <Palette size={11} /> Cor primária
-          </label>
-          <div className="grid grid-cols-4 gap-1.5">
-            {PRESET_COLORS.map(c => (
-              <button
-                key={c}
-                onClick={() => set({ primaryColor: c })}
-                className={`h-8 rounded-md transition-all ${layout.primaryColor === c ? "ring-2 ring-white ring-offset-1 ring-offset-background scale-105" : "hover:scale-105"}`}
-                style={{ background: c }}
-              />
-            ))}
-          </div>
-          {isPremium && (
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-muted-foreground">Custom:</span>
-              <input
-                type="color"
-                value={layout.primaryColor}
-                onChange={e => set({ primaryColor: e.target.value })}
-                className="h-7 w-14 rounded cursor-pointer border border-border/40 bg-transparent"
-              />
-              <span className="text-xs text-muted-foreground font-mono">{layout.primaryColor}</span>
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-2">
-          <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-            <Type size={11} /> Fonte
-          </label>
-          <div className="space-y-1">
-            {FONT_OPTIONS.map(f => (
-              <button
-                key={f.value}
-                onClick={() => set({ fontFamily: f.value })}
-                className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-all ${
-                  layout.fontFamily === f.value
-                    ? "bg-accent/15 border-accent/40 text-accent"
-                    : "border-border/30 text-muted-foreground hover:border-border hover:text-foreground"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {isPremium && (
-          <section className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-              <Sliders size={11} /> Blocos do contrato
-            </label>
-            <div className="space-y-1">
-              {layout.blocks.map(block => {
-                const labels: Record<string, string> = {
-                  header: "Cabeçalho", parties: "Partes", conditions: "Condições",
-                  scope: "Escopo", clauses: "Cláusulas", signatures: "Assinaturas",
-                };
-                return (
-                  <div key={block.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border/30 bg-card/20">
-                    <span className="text-xs text-muted-foreground">{labels[block.id] ?? block.id}</span>
-                    <button
-                      onClick={() => set({
-                        blocks: layout.blocks.map(b =>
-                          b.id === block.id ? { ...b, visible: !b.visible } : b
-                        )
-                      })}
-                      className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
-                        block.visible
-                          ? "bg-accent/15 border-accent/40 text-accent"
-                          : "border-border/40 text-muted-foreground/50"
-                      }`}
-                    >
-                      {block.visible ? "Visível" : "Oculto"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {isPremium && (
-          <section className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                Seções personalizadas
-              </label>
-              <button
-                onClick={addCustomBlock}
-                className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
-              >
-                <Plus size={11} /> Adicionar
-              </button>
-            </div>
-
-            {(!layout.customTextBlocks || layout.customTextBlocks.length === 0) && (
-              <p className="text-xs text-muted-foreground/50 text-center py-3">Nenhuma seção adicionada</p>
-            )}
-
-            {layout.customTextBlocks?.map(block => (
-              <div key={block.id} className="rounded-lg border border-border/30 bg-card/20 overflow-hidden">
-                <button
-                  onClick={() => setExpandedBlock(expandedBlock === block.id ? null : block.id)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <span className="truncate font-medium">{block.title}</span>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <ChevronDown size={11} className={`transition-transform ${expandedBlock === block.id ? "rotate-180" : ""}`} />
-                    <button
-                      onClick={e => { e.stopPropagation(); removeCustomBlock(block.id); }}
-                      className="text-muted-foreground/40 hover:text-destructive transition-colors ml-1"
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                </button>
-                {expandedBlock === block.id && (
-                  <div className="px-3 pb-3 space-y-2 border-t border-border/30">
-                    <Input
-                      value={block.title}
-                      onChange={e => updateCustomBlock(block.id, { title: e.target.value })}
-                      placeholder="Título da seção"
-                      className="h-7 text-xs bg-background border-border/40 mt-2"
-                    />
-                    <Textarea
-                      value={block.content}
-                      onChange={e => updateCustomBlock(block.id, { content: e.target.value })}
-                      placeholder="Conteúdo…"
-                      rows={4}
-                      className="text-xs bg-background border-border/40 resize-none"
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
-          </section>
-        )}
-
-        <button
-          onClick={() => onChange(DEFAULT_LAYOUT)}
-          className="w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-lg border border-border/30 text-muted-foreground/60 hover:text-muted-foreground hover:border-border/50 transition-all"
-        >
-          <RotateCcw size={11} /> Restaurar padrão
-        </button>
-
-      </div>
-    </ScrollArea>
-  );
-}
+// Legacy AppearancePanel removido do fluxo. O editor usa ContractLayoutPanel.
 
 // ─────────────────────────────────────────────────────────────
 // PROVIDER SIGNATURE PANEL
@@ -840,18 +521,16 @@ function ProviderSignaturePanel({
             }
           </button>
 
-          {savedExists && (
-            <button
-              onClick={onApply}
-              disabled={applying}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-[#ff6600] text-white hover:bg-orange-500 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {applying
-                ? <><Loader2 size={13} className="animate-spin" /> Aplicando...</>
-                : <><CheckCircle2 size={13} /> Usar assinatura salva</>
-              }
-            </button>
-          )}
+          <button
+            onClick={onApply}
+            disabled={applying}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-[#ff6600] text-white hover:bg-orange-500 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {applying
+              ? <><Loader2 size={13} className="animate-spin" /> Aplicando...</>
+              : <><CheckCircle2 size={13} /> Usar assinatura salva</>
+            }
+          </button>
 
           {savedExists && (
             <button
@@ -866,6 +545,9 @@ function ProviderSignaturePanel({
         <p className="text-[10px] text-zinc-700 leading-relaxed text-center">
           Assinatura protegida com criptografia AES-256-GCM · Válida nos termos da MP 2.200-2/2001
         </p>
+        <p className="text-[10px] text-zinc-600 leading-relaxed text-center">
+          O preview oficial do contrato continua vindo do backend e só muda depois que a assinatura for aplicada no servidor.
+        </p>
       </div>
     </motion.div>
   );
@@ -876,8 +558,11 @@ function ProviderSignaturePanel({
 // ─────────────────────────────────────────────────────────────
 
 export default function EditorContratoPage() {
+  const { t, i18n } = useTranslation();
+  const isEnglish = i18n.resolvedLanguage !== "pt-BR";
   const { id } = useParams<{ id: string }>();
   const contractIdNum = Number(id || "0");
+  const hasValidContractId = Number.isInteger(contractIdNum) && contractIdNum > 0;
   const [, navigate] = useLocation();
 
   const [state, setState] = useState<EditorState>("loading");
@@ -887,338 +572,720 @@ export default function EditorContratoPage() {
 
   const [clauseTemplates, setClauseTemplates] = useState<ClauseTemplate[]>([]);
   const [clausesLoading, setClausesLoading] = useState(false);
+  // Dados de entrada enviados pelo frontend ao backend para orientar a selecao juridica.
+  const [legalContextInput, setLegalContextInput] = useState<AutoGenerateContractPayload>({});
+  const [authenticationMethodsInput, setAuthenticationMethodsInput] = useState("");
+  // Dados retornados pelo backend como leitura/preview juridico.
+  const [legalBlueprint, setLegalBlueprint] = useState<LegalBlueprintResponse | null>(null);
+  const [legalBlueprintLoading, setLegalBlueprintLoading] = useState(false);
+  const [legalBlueprintError, setLegalBlueprintError] = useState<string | null>(null);
+  const [blueprintDialogOpen, setBlueprintDialogOpen] = useState(false);
+  const [legalContextOpen, setLegalContextOpen] = useState(false);
+  const [autoGenerateStatus, setAutoGenerateStatus] = useState<AutoGenerateStatus>("idle");
+  const [autoGenerateError, setAutoGenerateError] = useState<string | null>(null);
+  const [autoGenerateResult, setAutoGenerateResult] = useState<AutoGenerateContractResponse | null>(null);
+  const [mccRunResult, setMccRunResult] = useState<MccRunResult | null>(null);
 
+  const [previewDocumentUrl, setPreviewDocumentUrl] = useState("");
   const [previewHtml, setPreviewHtml] = useState("");
+  const [previewExpiresAt, setPreviewExpiresAt] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(true);
+  const [previewRefreshing, setPreviewRefreshing] = useState(false);
+  const [previewManualRefreshing, setPreviewManualRefreshing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewLoadedOnce, setPreviewLoadedOnce] = useState(false);
+  const [previewRenderKey, setPreviewRenderKey] = useState(0);
+  const [previewPageCount, setPreviewPageCount] = useState(1);
+  const [previewContentHeight, setPreviewContentHeight] = useState(PREVIEW_BASE_HEIGHT);
+  const [previewPageOffsets, setPreviewPageOffsets] = useState<number[]>([0]);
   const [selectedClause, setSelectedClause] = useState<ContractClause | null>(null);
+  const [clauseExplorerTab, setClauseExplorerTab] = useState<ClauseExplorerTab>("contrato");
   const [editContent, setEditContent] = useState("");
   const [rightTab, setRightTab] = useState<RightPanelTab>("clausula");
-  const [layout, setLayout] = useState<LayoutCustomization>(DEFAULT_LAYOUT);
-
-  const [signatureObjectUrl, setSignatureObjectUrl] = useState<string | null>(null);
-  const [signatureLoading, setSignatureLoading] = useState(false);
-  const signatureObjectUrlRef = useRef<string | null>(null);
-
-  const [providerSignatureUrl, setProviderSignatureUrl] = useState<string | null>(null);
-  const [providerSigLoading, setProviderSigLoading] = useState(false);
+  const [layout, setLayout] = useState<ContractLayout>(DEFAULT_LAYOUT);
+  const [suggestedClauses, setSuggestedClauses] = useState<ContractClauseSuggestion[]>([]);
   const [providerSigSaving, setProviderSigSaving] = useState(false);
   const [providerSigApplying, setProviderSigApplying] = useState(false);
   const [showProviderSigPanel, setShowProviderSigPanel] = useState(false);
-  const providerSigObjectUrlRef = useRef<string | null>(null);
-  const [providerSavedExists, setProviderSavedExists] = useState(false);
-  const [drawnProviderDataUrl, setDrawnProviderDataUrl] = useState<string | null>(null);
+  const [providerSavedExists, setProviderSavedExists] = useState<boolean | null>(null);
+  const [clausePanelOpen, setClausePanelOpen] = useState(false);
+  const [inspectorPanelOpen, setInspectorPanelOpen] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("todos");
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [mobileTab, setMobileTab] = useState<"biblioteca" | "preview" | "editor">("preview");
   const [savingClause, setSavingClause] = useState(false);
-  const [previewClause, setPreviewClause] = useState<ClauseTemplate | null>(null);
+  const [showLegalNotice, setShowLegalNotice] = useState(true);
+  const [previewFitScale, setPreviewFitScale] = useState(1);
+  const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewPan, setPreviewPan] = useState({ x: 0, y: 0 });
+  const [isPreviewPanning, setIsPreviewPanning] = useState(false);
+  const [clauseNavigatorWidth, setClauseNavigatorWidth] = useState(CLAUSE_NAV_DEFAULT_WIDTH);
+  const previewScale = previewFitScale * previewZoom;
 
   // ── MOBILE TAB — declarado aqui, junto com os outros states ──────────────
-  const [mobileTab, setMobileTab] = useState<"biblioteca" | "preview" | "editor">("preview");
-
   const iframeDesktopRef = useRef<HTMLIFrameElement>(null);
-  const iframeMobileRef = useRef<HTMLIFrameElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const layoutDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isFirstLayoutRender = useRef(true);
+  const previewStageRef = useRef<HTMLDivElement>(null);
+  const previewPanStartRef = useRef<{
+    pointerId: number;
+    originX: number;
+    originY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const legalBlueprintDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRequestRef = useRef<Promise<void> | null>(null);
+  const queuedPreviewModeRef = useRef<Exclude<ProtectedPreviewRefreshReason, "initial"> | null>(null);
+  const previewExpiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewAssetRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewMutationRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewAssetRetryAttemptRef = useRef(0);
+  const initialPreviewRequestedRef = useRef(false);
+  const clauseResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const [layoutSaving, setLayoutSaving] = useState<"idle" | "saving" | "saved">("idle");
   const [showTour, setShowTour] = useState(false);
 
-  const isPro = hasPlan(planId, "pro");
-  const isPremium = hasPlan(planId, "premium");
 
   // ── Muda para aba editor quando cláusula é selecionada em mobile ──────────
+  const clearLegalBlueprintDebounce = useCallback(() => {
+    if (legalBlueprintDebounceRef.current) {
+      clearTimeout(legalBlueprintDebounceRef.current);
+      legalBlueprintDebounceRef.current = null;
+    }
+  }, []);
+
+  const updateLegalContextInput = useCallback((patch: Partial<AutoGenerateContractPayload>) => {
+    setLegalContextInput((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const handleToggleContractModel = useCallback((value: LegalContractModel) => {
+    setLegalContextInput((current) => {
+      const currentModels = current.contractModels ?? [];
+      const nextModels = currentModels.includes(value)
+        ? currentModels.filter((item) => item !== value)
+        : [...currentModels, value];
+
+      return {
+        ...current,
+        contractModels: nextModels,
+      };
+    });
+  }, []);
+
+  const clearPreviewAssetRetryTimer = useCallback(() => {
+    if (previewAssetRetryTimerRef.current) {
+      clearTimeout(previewAssetRetryTimerRef.current);
+      previewAssetRetryTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPreviewExpiryTimer = useCallback(() => {
+    if (previewExpiryTimerRef.current) {
+      clearTimeout(previewExpiryTimerRef.current);
+      previewExpiryTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPreviewMutationRefreshTimer = useCallback(() => {
+    if (previewMutationRefreshTimerRef.current) {
+      clearTimeout(previewMutationRefreshTimerRef.current);
+      previewMutationRefreshTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
-    if (selectedClause && window.innerWidth < 1024) {
-      setMobileTab("editor");
+    const stage = previewStageRef.current;
+    if (!stage || typeof ResizeObserver === "undefined") return;
+
+    const updatePreviewScale = () => {
+      const { clientWidth, clientHeight } = stage;
+      if (!clientWidth || !clientHeight) return;
+
+      const availableWidth = Math.max(clientWidth - 16, 1);
+      const availableHeight = Math.max(clientHeight - 12, 1);
+      const nextScale = Math.min(availableWidth / PREVIEW_BASE_WIDTH, availableHeight / PREVIEW_BASE_HEIGHT, 0.92);
+      setPreviewFitScale((currentScale) =>
+        Math.abs(currentScale - nextScale) < 0.01 ? currentScale : nextScale,
+      );
+    };
+
+    updatePreviewScale();
+
+    const observer = new ResizeObserver(updatePreviewScale);
+    observer.observe(stage);
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      const resizeState = clauseResizeStateRef.current;
+      if (!resizeState) return;
+
+      const deltaX = event.clientX - resizeState.startX;
+      const nextWidth = Math.min(
+        CLAUSE_NAV_MAX_WIDTH,
+        Math.max(CLAUSE_NAV_MIN_WIDTH, resizeState.startWidth + deltaX),
+      );
+      setClauseNavigatorWidth(nextWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (!clauseResizeStateRef.current) return;
+      clauseResizeStateRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  const handleClauseResizeStart = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    clauseResizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: clauseNavigatorWidth,
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [clauseNavigatorWidth]);
+
+  const refreshProtectedPreview = useCallback(async (
+    reason: ProtectedPreviewRefreshReason,
+    showToast = false,
+  ) => {
+    if (!hasValidContractId) return;
+    if (previewRequestRef.current) {
+      if (reason !== "initial") {
+        queuedPreviewModeRef.current = reason === "manual" ? "manual" : (queuedPreviewModeRef.current ?? reason);
+      }
+      return previewRequestRef.current;
     }
-  }, [selectedClause]);
 
-const loadContract = useCallback(async () => {
-  setState("loading");
+    const shouldBlockInitialPreview = reason === "initial" && !previewLoadedOnce && !previewHtml;
+    if (shouldBlockInitialPreview) setPreviewLoading(true);
+    if (reason !== "initial") setPreviewRefreshing(true);
+    if (reason === "manual" && previewLoadedOnce) setPreviewManualRefreshing(true);
+    setPreviewError(null);
 
-  try {
-    const [raw, planData] = await Promise.all([
-      getContract(contractIdNum),
-      getMyPlan().catch(() => ({ plan: { planId: "free" as PlanId } })),
-    ]);
+    const request = (async () => {
+      try {
+        const rendered = await renderContract(contractIdNum);
+        const nextHtml = typeof rendered.previewHtml === "string" && rendered.previewHtml.trim()
+          ? rendered.previewHtml
+          : "";
+        const nextUrl = typeof rendered.previewDocumentUrl === "string"
+          ? rendered.previewDocumentUrl.trim()
+          : "";
 
-    const c = normalizeContract(raw);
+        if (!nextHtml && !nextUrl) {
+          throw new Error("O backend nao retornou previewHtml ou previewDocumentUrl.");
+        }
 
-    setContract(c);
-    setClauses(c.clauses ?? []);
-    setPlanId(planData.plan.planId);
+        clearPreviewAssetRetryTimer();
+        clearPreviewExpiryTimer();
+        previewAssetRetryAttemptRef.current = 0;
 
-    const neverShow = localStorage.getItem("fechou_editor_tour_never") === "1";
+        setPreviewHtml(nextHtml);
+        setPreviewDocumentUrl(nextUrl);
+        setPreviewExpiresAt(rendered.previewExpiresAt ?? null);
+        setPreviewPageCount(1);
+        setPreviewContentHeight(PREVIEW_BASE_HEIGHT);
+        setPreviewPageOffsets([0]);
+        setPreviewRenderKey((current) => current + 1);
 
-if (!neverShow) {
-  setShowTour(true);
-}
+        const delay = getPreviewRefreshDelay(rendered.previewExpiresAt ?? null);
+        if (delay !== null) {
+          previewExpiryTimerRef.current = setTimeout(() => {
+            void refreshProtectedPreview("expired", true);
+          }, delay);
+        }
+      } catch (err: any) {
+        const message = getFriendlyApiErrorMessage(err, "Nao foi possivel atualizar o preview.");
+        if (!previewLoadedOnce && !previewHtml) {
+          setPreviewError(message);
+          setPreviewLoading(false);
+        } else {
+          setPreviewManualRefreshing(false);
+          if (showToast) {
+            toast.error(message);
+          }
+        }
+      } finally {
+        if (reason !== "initial") {
+          setPreviewRefreshing(false);
+        }
+        if (reason === "manual" && !iframeDesktopRef.current) {
+          setPreviewManualRefreshing(false);
+        }
+        previewRequestRef.current = null;
+        if (queuedPreviewModeRef.current) {
+          const nextMode = queuedPreviewModeRef.current;
+          queuedPreviewModeRef.current = null;
+          setTimeout(() => {
+            void refreshProtectedPreview(nextMode, nextMode === "manual");
+          }, 0);
+        }
+      }
+    })();
 
-    const savedLayout: Partial<LayoutCustomization> = {};
-    if ((raw as any).layoutConfig?.primaryColor) {
-      Object.assign(savedLayout, (raw as any).layoutConfig);
+    previewRequestRef.current = request;
+    return request;
+  }, [
+    clearPreviewAssetRetryTimer,
+    clearPreviewExpiryTimer,
+    contractIdNum,
+    hasValidContractId,
+    previewHtml,
+    previewLoadedOnce,
+  ]);
+
+  const requestPreviewAssetRetry = useCallback(() => {
+    clearPreviewAssetRetryTimer();
+
+    if (previewAssetRetryAttemptRef.current >= PREVIEW_ASSET_RETRY_LIMIT) {
+      setPreviewError(PREVIEW_SIGNATURE_UNAVAILABLE_MESSAGE);
+      toast.error(PREVIEW_SIGNATURE_UNAVAILABLE_MESSAGE);
+      return;
     }
-    if ((raw as any).logoUrl) {
-      savedLayout.logoUrl = (raw as any).logoUrl;
-    }
-    if (Object.keys(savedLayout).length > 0) {
-      setLayout(prev => ({ ...prev, ...savedLayout }));
+
+    const attempt = previewAssetRetryAttemptRef.current + 1;
+    previewAssetRetryAttemptRef.current = attempt;
+    const delay = Math.min(
+      PREVIEW_ASSET_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+      PREVIEW_ASSET_RETRY_MAX_DELAY_MS,
+    );
+
+    previewAssetRetryTimerRef.current = setTimeout(() => {
+      void refreshProtectedPreview("asset-error", true);
+    }, delay);
+  }, [clearPreviewAssetRetryTimer, refreshProtectedPreview]);
+
+  const handlePreviewFrameLoad = useCallback(() => {
+    setPreviewLoadedOnce(true);
+    setPreviewLoading(false);
+    setPreviewManualRefreshing(false);
+    previewAssetRetryAttemptRef.current = 0;
+  }, []);
+
+  const measurePreviewPages = useCallback((frame: HTMLIFrameElement | null) => {
+    const doc = frame?.contentDocument;
+    const body = doc?.body;
+    const html = doc?.documentElement;
+    if (!doc || !body || !html) return;
+
+    const scrollTop = doc.defaultView?.scrollY ?? html.scrollTop ?? body.scrollTop ?? 0;
+    const breakCandidates: number[] = [];
+    const maxElementBottom = Array.from(body.querySelectorAll<HTMLElement>("*")).reduce(
+      (max, element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return max;
+        const bottom = rect.bottom + scrollTop;
+        if (/^(P|LI|H[1-6]|TR|TABLE|SECTION|ARTICLE|DIV|UL|OL|BLOCKQUOTE)$/i.test(element.tagName)) {
+          breakCandidates.push(bottom + 2);
+        }
+        return Math.max(max, bottom);
+      },
+      0,
+    );
+
+    const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) =>
+        node.textContent?.trim()
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT,
+    });
+    const range = doc.createRange();
+    let textNode = walker.nextNode();
+
+    while (textNode) {
+      range.selectNodeContents(textNode);
+      Array.from(range.getClientRects()).forEach((rect) => {
+        if (rect.width > 0 && rect.height > 0) {
+          breakCandidates.push(rect.bottom + scrollTop + 4);
+        }
+      });
+      textNode = walker.nextNode();
     }
 
-    setState("idle");
-  } catch (err) {
-    toast.error("Não foi possível carregar o contrato.");
-    setState("error");
-  }
-}, [contractIdNum]);
-  const fetchClauses = useCallback(async (searchValue: string, category: string) => {
+    range.detach();
+
+    const contentHeight = Math.max(
+      body.scrollHeight,
+      body.offsetHeight,
+      html.scrollHeight,
+      html.offsetHeight,
+      maxElementBottom,
+    );
+    const nextContentHeight = Math.max(PREVIEW_BASE_HEIGHT, Math.ceil(contentHeight + 1));
+    const nextPageOffsets = buildAbntPageOffsets(nextContentHeight, breakCandidates);
+    const nextPageCount = nextPageOffsets.length;
+    setPreviewContentHeight((current) =>
+      Math.abs(current - nextContentHeight) < 2 ? current : nextContentHeight,
+    );
+    setPreviewPageOffsets((current) =>
+      current.length === nextPageOffsets.length &&
+      current.every((offset, index) => Math.abs(offset - nextPageOffsets[index]) < 2)
+        ? current
+        : nextPageOffsets,
+    );
+    setPreviewPageCount((current) => current === nextPageCount ? current : nextPageCount);
+  }, []);
+
+  const schedulePreviewPageMeasure = useCallback((frame: HTMLIFrameElement, pageIndex: number) => {
+    const doc = frame.contentDocument;
+    if (!doc || pageIndex !== 0) return;
+
+    const remeasureFirstPage = () => {
+      measurePreviewPages(frame);
+    };
+
+    requestAnimationFrame(remeasureFirstPage);
+    setTimeout(remeasureFirstPage, 120);
+    setTimeout(remeasureFirstPage, 420);
+    void doc.fonts?.ready.then(remeasureFirstPage).catch(() => undefined);
+    Array.from(doc.images).forEach((image) => {
+      if (image.complete) return;
+      image.addEventListener("load", remeasureFirstPage, { once: true });
+      image.addEventListener("error", remeasureFirstPage, { once: true });
+    });
+  }, [measurePreviewPages]);
+
+  const handlePreviewPageFrameLoad = useCallback((
+    event: React.SyntheticEvent<HTMLIFrameElement>,
+    pageIndex: number,
+  ) => {
+    schedulePreviewPageMeasure(event.currentTarget, pageIndex);
+    if (pageIndex === 0) {
+      handlePreviewFrameLoad();
+    }
+  }, [handlePreviewFrameLoad, schedulePreviewPageMeasure]);
+
+  const loadPreview = useCallback((mode: PreviewRefreshMode) => {
+    return refreshProtectedPreview(mode, mode === "manual");
+  }, [refreshProtectedPreview]);
+
+  const refreshPreviewAfterMutation = useCallback(() => {
+    clearPreviewMutationRefreshTimer();
+    void loadPreview("mutation");
+    previewMutationRefreshTimerRef.current = setTimeout(() => {
+      previewMutationRefreshTimerRef.current = null;
+      void loadPreview("mutation");
+    }, PREVIEW_UPDATE_DEBOUNCE_MS);
+  }, [clearPreviewMutationRefreshTimer, loadPreview]);
+
+  const handlePreviewPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button,a,input,textarea,select,[data-no-pan]")) return;
+
+    event.preventDefault();
+    previewPanStartRef.current = {
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      originY: event.clientY,
+      startX: previewPan.x,
+      startY: previewPan.y,
+    };
+    setIsPreviewPanning(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [previewPan.x, previewPan.y]);
+
+  const handlePreviewPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const start = previewPanStartRef.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+
+    setPreviewPan({
+      x: start.startX + event.clientX - start.originX,
+      y: start.startY + event.clientY - start.originY,
+    });
+  }, []);
+
+  const endPreviewPan = useCallback((event?: React.PointerEvent<HTMLDivElement>) => {
+    if (event && previewPanStartRef.current?.pointerId === event.pointerId && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    previewPanStartRef.current = null;
+    setIsPreviewPanning(false);
+  }, []);
+
+  const handlePreviewWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {
+      const direction = event.deltaY > 0 ? -PREVIEW_ZOOM_STEP : PREVIEW_ZOOM_STEP;
+      setPreviewZoom((current) => normalizePreviewZoom(current + direction));
+      return;
+    }
+
+    setPreviewPan((current) => ({
+      x: current.x - event.deltaX,
+      y: current.y - event.deltaY,
+    }));
+  }, []);
+
+  const resetPreviewPan = useCallback(() => {
+    previewPanStartRef.current = null;
+    setIsPreviewPanning(false);
+    setPreviewPan({ x: 0, y: 0 });
+  }, []);
+
+  const zoomPreviewOut = useCallback(() => {
+    setPreviewZoom((current) => normalizePreviewZoom(current - PREVIEW_ZOOM_STEP));
+  }, []);
+
+  const zoomPreviewIn = useCallback(() => {
+    setPreviewZoom((current) => normalizePreviewZoom(current + PREVIEW_ZOOM_STEP));
+  }, []);
+
+  const resetPreviewView = useCallback(() => {
+    setPreviewZoom(1);
+    resetPreviewPan();
+  }, [resetPreviewPan]);
+
+  const openInspectorPanel = useCallback((tab: RightPanelTab) => {
+    setRightTab(tab);
+    setInspectorPanelOpen(true);
+  }, []);
+
+  const saveLayoutPatch = useCallback(async (patch: Partial<ContractLayout>) => {
+    if (!hasValidContractId) return;
+
+    setLayout((current) => mergeLayoutState(current, patch));
+    setLayoutSaving("saving");
+
+    try {
+      await updateLayout(contractIdNum, patch as Record<string, unknown>);
+      setLayoutSaving("saved");
+      refreshPreviewAfterMutation();
+      setTimeout(() => setLayoutSaving("idle"), 1500);
+    } catch (err: any) {
+      setLayoutSaving("idle");
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao salvar layout do contrato."));
+    }
+  }, [contractIdNum, hasValidContractId, refreshPreviewAfterMutation]);
+
+  const loadLegalBlueprint = useCallback(async () => {
+    setLegalBlueprintLoading(true);
+    setLegalBlueprintError(null);
+
+    try {
+      const blueprint = await fetchLegalBlueprint(buildLegalBlueprintParams(legalContextInput));
+      setLegalBlueprint(blueprint);
+      setLegalContextInput((current) => {
+        const merged = mergeBlueprintDefaults(current, blueprint.defaultContext, contract?.contractType);
+        return JSON.stringify(merged) === JSON.stringify(current) ? current : merged;
+      });
+      setAuthenticationMethodsInput((current) => {
+        if (current.trim().length > 0) return current;
+        return blueprint.defaultContext.authenticationMethods?.join(", ") ?? "";
+      });
+    } catch (err: any) {
+      setLegalBlueprintError(getFriendlyApiErrorMessage(err, "Nao foi possivel carregar o blueprint juridico."));
+    } finally {
+      setLegalBlueprintLoading(false);
+    }
+  }, [contract?.contractType, legalContextInput]);
+
+  const loadContract = useCallback(async () => {
+    if (!hasValidContractId) {
+      setContract(null);
+      setClauses([]);
+      setState("error");
+      return;
+    }
+
+    setState("loading");
+
+    try {
+      const raw = await getContract(contractIdNum);
+      const c = normalizeContract(raw);
+
+      setContract(c);
+      setClauses(c.clauses ?? []);
+      setSuggestedClauses(c.suggestedClauses ?? []);
+      setLayout(c.layout ?? DEFAULT_LAYOUT);
+      setProviderSavedExists(null);
+
+      const neverShow = localStorage.getItem("fechou_editor_tour_never") === "1";
+      if (!neverShow) {
+        setShowTour(true);
+      }
+
+      setState("idle");
+      void getMyPlan()
+        .then((planData) => {
+          setPlanId(planData.plan.planId);
+        })
+        .catch(() => {
+          setPlanId("free");
+        });
+    } catch (err) {
+      toast.error("Não foi possível carregar o contrato.");
+      setState("error");
+    }
+  }, [contractIdNum, hasValidContractId]);
+  const loadClauseTemplates = useCallback(async (searchValue: string, category: string) => {
     setClausesLoading(true);
     try {
       const params: { search?: string; category?: string } = {};
       if (searchValue.trim()) params.search = searchValue.trim();
       if (category !== "todos") params.category = category;
-      setClauseTemplates(await listClauses(params));
+      setClauseTemplates(await fetchClauses(params));
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao buscar cláusulas.");
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao buscar clausulas."));
     } finally {
       setClausesLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    _sigCache.delete(contractIdNum);
-    _provContractCache.delete(contractIdNum);
-    _provProfileCached = null;
+    clearLegalBlueprintDebounce();
+    previewRequestRef.current = null;
+    queuedPreviewModeRef.current = null;
+    initialPreviewRequestedRef.current = false;
+    clearPreviewAssetRetryTimer();
+    clearPreviewExpiryTimer();
+    clearPreviewMutationRefreshTimer();
+    setPreviewDocumentUrl("");
+    setPreviewHtml("");
+    setPreviewExpiresAt(null);
+    setPreviewRenderKey(0);
+    setPreviewPageCount(1);
+    setPreviewContentHeight(PREVIEW_BASE_HEIGHT);
+    setPreviewPageOffsets([0]);
+    setPreviewError(null);
+    setPreviewLoading(true);
+    setPreviewRefreshing(false);
+    setPreviewManualRefreshing(false);
+    setPreviewLoadedOnce(false);
+    setPreviewZoom(1);
+    resetPreviewPan();
+    setLegalContextInput({});
+    setAuthenticationMethodsInput("");
+    setLegalBlueprint(null);
+    setLegalBlueprintLoading(false);
+    setLegalBlueprintError(null);
+    setBlueprintDialogOpen(false);
+    setLegalContextOpen(false);
+    setClausePanelOpen(false);
+    setInspectorPanelOpen(false);
+    setAutoGenerateStatus("idle");
+    setAutoGenerateError(null);
+    setAutoGenerateResult(null);
+    setMccRunResult(null);
+    setSuggestedClauses([]);
+    setLayout(DEFAULT_LAYOUT);
+
+    if (!hasValidContractId) {
+      setContract(null);
+      setClauses([]);
+      setSuggestedClauses([]);
+      setPreviewLoading(false);
+      setState("error");
+      return () => {
+        clearLegalBlueprintDebounce();
+        clearPreviewAssetRetryTimer();
+        clearPreviewExpiryTimer();
+        clearPreviewMutationRefreshTimer();
+      };
+    }
+
     loadContract();
-  }, [loadContract]);
-
-  const fetchSignature = useCallback(async (force = false) => {
-    if (!contractIdNum) return;
-
-    if (!force) {
-      const cached = _sigCache.get(contractIdNum);
-      if (cached === "none") return;
-      if (cached) { setSignatureObjectUrl(cached); return; }
-    }
-
-    setSignatureLoading(true);
-    try {
-      const token = authStorage.getAccessToken() ?? "";
-      const res = await fetch(`/api/contracts/${contractIdNum}/signature`, {
-        credentials: "include",
-        headers: { Accept: "image/png", Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 204 || !res.ok) {
-        _sigCache.set(contractIdNum, "none");
-        setSignatureObjectUrl(null);
-        return;
-      }
-      const contentType = res.headers.get("content-type") ?? "";
-      if (!contentType.startsWith("image/png")) {
-        _sigCache.set(contractIdNum, "none");
-        setSignatureObjectUrl(null);
-        return;
-      }
-      const blob = await res.blob();
-      if (signatureObjectUrlRef.current) URL.revokeObjectURL(signatureObjectUrlRef.current);
-      const objectUrl = URL.createObjectURL(blob);
-      signatureObjectUrlRef.current = objectUrl;
-      _sigCache.set(contractIdNum, objectUrl);
-      setSignatureObjectUrl(objectUrl);
-    } catch {
-      setSignatureObjectUrl(null);
-    } finally {
-      setSignatureLoading(false);
-    }
-  }, [contractIdNum]);
-
-  const handleRefreshSignature = useCallback(() => {
-    _sigCache.delete(contractIdNum);
-    fetchSignature(true);
-  }, [contractIdNum, fetchSignature]);
-
-  const loadProviderSignatures = useCallback(async (force = false) => {
-    if (!contractIdNum) return;
-
-    const cachedContract = _provContractCache.get(contractIdNum);
-    const profileCached = _provProfileCached;
-
-    if (!force && cachedContract !== undefined && profileCached !== null) {
-      if (cachedContract !== "none") setProviderSignatureUrl(cachedContract);
-      setProviderSavedExists(profileCached);
-      return;
-    }
-
-    setProviderSigLoading(true);
-    try {
-      const token = authStorage.getAccessToken() ?? "";
-      const headers = { Authorization: `Bearer ${token}`, Accept: "image/png" };
-
-      const contractSigRes = await fetch(`/api/contracts/${contractIdNum}/provider-signature`, {
-        credentials: "include", headers,
-      });
-      if (contractSigRes.ok && contractSigRes.headers.get("content-type")?.startsWith("image/png")) {
-        const blob = await contractSigRes.blob();
-        if (providerSigObjectUrlRef.current) URL.revokeObjectURL(providerSigObjectUrlRef.current);
-        const url = URL.createObjectURL(blob);
-        providerSigObjectUrlRef.current = url;
-        _provContractCache.set(contractIdNum, url);
-        setProviderSignatureUrl(url);
-      } else {
-        _provContractCache.set(contractIdNum, "none");
-        setProviderSignatureUrl(null);
-      }
-
-      const profileRes = await fetch("/api/contracts/provider-signature", {
-        credentials: "include", headers,
-      });
-      const exists = profileRes.ok && profileRes.status === 200;
-      _provProfileCached = exists;
-      setProviderSavedExists(exists);
-    } catch {
-      setProviderSignatureUrl(null);
-    } finally {
-      setProviderSigLoading(false);
-    }
-  }, [contractIdNum]);
+    return () => {
+      clearLegalBlueprintDebounce();
+      clearPreviewAssetRetryTimer();
+      clearPreviewExpiryTimer();
+      clearPreviewMutationRefreshTimer();
+    };
+  }, [clearLegalBlueprintDebounce, clearPreviewAssetRetryTimer, clearPreviewExpiryTimer, clearPreviewMutationRefreshTimer, hasValidContractId, loadContract, resetPreviewPan]);
 
   const handleSaveProviderSignature = useCallback(async (dataUrl: string) => {
     if (!dataUrl) return;
     setProviderSigSaving(true);
     try {
-      const token = authStorage.getAccessToken() ?? "";
       const base64Only = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-      const res = await fetch("/api/contracts/provider-signature", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ signatureDataUrl: base64Only }),
-      });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
-      _provProfileCached = true;
+      await runWithStepUp("contracts.provider-signature.save", undefined, (stepUpToken) =>
+        apiFetch("/api/contracts/provider-signature", {
+          method: "POST",
+          json: { signatureDataUrl: base64Only },
+          stepUpToken,
+        })
+      );
       setProviderSavedExists(true);
       toast.success("Assinatura salva no perfil!");
+      refreshPreviewAfterMutation();
     } catch (err: any) {
-      toast.error(err?.message ?? "Erro ao salvar assinatura.");
+      if (isStepUpCancelledError(err)) return;
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao salvar assinatura."));
     } finally {
       setProviderSigSaving(false);
     }
-  }, []);
+  }, [refreshPreviewAfterMutation]);
 
   const handleApplyProviderSignature = useCallback(async () => {
     if (!contractIdNum) return;
     setProviderSigApplying(true);
     try {
-      const token = authStorage.getAccessToken() ?? "";
-      const res = await fetch(`/api/contracts/${contractIdNum}/provider-signature`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      await runWithStepUp("contracts.provider-signature.apply", undefined, (stepUpToken) =>
+        apiFetch(`/api/contracts/${contractIdNum}/provider-signature`, {
+          method: "POST",
+          stepUpToken,
+        })
+      );
       toast.success("Assinatura aplicada ao contrato!");
-      _provContractCache.delete(contractIdNum);
-      await loadProviderSignatures(true);
+      refreshPreviewAfterMutation();
       setShowProviderSigPanel(false);
     } catch (err: any) {
-      toast.error(err?.message ?? "Erro ao aplicar assinatura.");
+      if (isStepUpCancelledError(err)) return;
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao aplicar assinatura."));
     } finally {
       setProviderSigApplying(false);
     }
-  }, [contractIdNum, loadProviderSignatures]);
+  }, [contractIdNum, refreshPreviewAfterMutation]);
 
   const handleDeleteProviderSignature = useCallback(async () => {
     try {
-      const token = authStorage.getAccessToken() ?? "";
-      await fetch("/api/contracts/provider-signature", {
-        method: "DELETE",
-        credentials: "include",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      _provProfileCached = false;
+      await runWithStepUp("contracts.provider-signature.delete", undefined, (stepUpToken) =>
+        apiFetch("/api/contracts/provider-signature", {
+          method: "DELETE",
+          stepUpToken,
+        })
+      );
       setProviderSavedExists(false);
       toast.success("Assinatura removida do perfil.");
-    } catch {
-      toast.error("Erro ao remover assinatura.");
+    } catch (err: any) {
+      if (isStepUpCancelledError(err)) return;
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao remover assinatura."));
     }
   }, []);
 
   useEffect(() => {
-    if (!contractIdNum) return;
-    loadProviderSignatures();
+    if (state !== "idle" || !hasValidContractId) return;
+    clearLegalBlueprintDebounce();
+    legalBlueprintDebounceRef.current = setTimeout(() => {
+      legalBlueprintDebounceRef.current = null;
+      void loadLegalBlueprint();
+    }, 250);
+
     return () => {
-      if (providerSigObjectUrlRef.current) {
-        URL.revokeObjectURL(providerSigObjectUrlRef.current);
-        providerSigObjectUrlRef.current = null;
-      }
+      clearLegalBlueprintDebounce();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractIdNum]);
+  }, [clearLegalBlueprintDebounce, hasValidContractId, loadLegalBlueprint, state]);
 
   useEffect(() => {
-    if (!contractIdNum) return;
-    fetchSignature(true);
-    return () => {
-      if (signatureObjectUrlRef.current) {
-        URL.revokeObjectURL(signatureObjectUrlRef.current);
-        signatureObjectUrlRef.current = null;
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractIdNum]);
-
-  useEffect(() => {
-    if (state === "idle") fetchClauses(search, categoryFilter);
-  }, [state]);
-
-  useEffect(() => {
-    if (state !== "idle") return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchClauses(search, categoryFilter), 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [search, categoryFilter, fetchClauses, state]);
-
-  useEffect(() => {
-    if (!contract) return;
-    const html = buildContractHtml(contract, clauses, layout, isPro, isPremium, signatureObjectUrl, providerSignatureUrl);
-    setPreviewHtml(html);
-  }, [contract, clauses, layout, isPro, isPremium, signatureObjectUrl, providerSignatureUrl]);
-
-  useEffect(() => {
-    if (isFirstLayoutRender.current) {
-      isFirstLayoutRender.current = false;
-      return;
-    }
-    if (!contractIdNum || state !== "idle") return;
-
-    if (layoutDebounceRef.current) clearTimeout(layoutDebounceRef.current);
-    setLayoutSaving("saving");
-
-    layoutDebounceRef.current = setTimeout(async () => {
-      try {
-        await updateLayout(contractIdNum, {
-          primaryColor: layout.primaryColor,
-          fontFamily: layout.fontFamily,
-          logoUrl: layout.logoUrl,
-          showFechouBranding: layout.showFechouBranding,
-          blocks: layout.blocks,
-          customTextBlocks: layout.customTextBlocks,
-        });
-        setLayoutSaving("saved");
-        setTimeout(() => setLayoutSaving("idle"), 2000);
-      } catch (err: any) {
-        setLayoutSaving("idle");
-        toast.error(err?.message ?? "Erro ao salvar layout.");
-      }
-    }, 800);
-
-    return () => { if (layoutDebounceRef.current) clearTimeout(layoutDebounceRef.current); };
-  }, [layout, contractIdNum, state]);
-
-  // previewHtml é passado via srcDoc diretamente nos iframes — sem doc.write
+    if (state !== "idle" || !hasValidContractId) return;
+    if (initialPreviewRequestedRef.current) return;
+    initialPreviewRequestedRef.current = true;
+    void loadPreview("initial");
+  }, [hasValidContractId, loadPreview, state]);
 
   const handleAddClause = async (template: ClauseTemplate) => {
     if (!contract) return;
@@ -1242,9 +1309,10 @@ if (!neverShow) {
         orderIndex: (newClause as any).orderIndex ?? clauses.length,
       };
       setClauses(prev => [...prev, enriched]);
+      refreshPreviewAfterMutation();
       toast.success("Cláusula adicionada!", { id: toastId });
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao adicionar cláusula.", { id: toastId });
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao adicionar clausula."), { id: toastId });
     }
   };
 
@@ -1256,9 +1324,10 @@ if (!neverShow) {
       await deleteClause(contractIdNum, target.clauseId ?? target.id);
       setClauses(prev => prev.filter(c => c.id !== rowId));
       if (selectedClause?.id === rowId) setSelectedClause(null);
+      refreshPreviewAfterMutation();
       toast.success("Cláusula removida.", { id: toastId });
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao remover cláusula.", { id: toastId });
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao remover clausula."), { id: toastId });
     }
   };
 
@@ -1273,12 +1342,61 @@ if (!neverShow) {
     setSavingClause(true);
     const toastId = toast.loading("Salvando cláusula...");
     try {
-      await updateClause(contractIdNum, selectedClause.clauseId ?? selectedClause.id, editContent);
-      setClauses(prev => prev.map(c => c.id === selectedClause.id ? { ...c, customContent: editContent } : c));
-      setSelectedClause(prev => prev ? { ...prev, customContent: editContent } : prev);
+      const candidateIds = [...new Set(
+        [selectedClause.id, selectedClause.clauseId]
+          .filter((value): value is string | number => value !== null && value !== undefined && String(value).length > 0),
+      )];
+
+      let updatedClause: ContractClause | null = null;
+      let lastError: unknown = null;
+
+      for (const clauseIdentifier of candidateIds) {
+        try {
+          updatedClause = await updateClause(contractIdNum, clauseIdentifier, editContent);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (!updatedClause) {
+        throw lastError ?? new Error("Nao foi possivel salvar a clausula.");
+      }
+
+      const savedClause = updatedClause;
+
+      const matchesUpdatedClause = (clause: ContractClause) =>
+        clause.id === selectedClause.id ||
+        clause.id === savedClause.id ||
+        String(clause.clauseId ?? "") === String(selectedClause.clauseId ?? "") ||
+        String(clause.clauseId ?? "") === String(savedClause.clauseId ?? "");
+
+      setClauses((prev) =>
+        prev.map((clause) =>
+          matchesUpdatedClause(clause)
+            ? {
+                ...clause,
+                ...savedClause,
+                customContent: savedClause.customContent ?? editContent,
+              }
+            : clause,
+        ),
+      );
+      setSelectedClause((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...savedClause,
+              customContent: savedClause.customContent ?? editContent,
+            }
+          : prev,
+      );
+      setEditContent(savedClause.customContent ?? editContent);
+      await loadContract();
+      refreshPreviewAfterMutation();
       toast.success("Cláusula salva!", { id: toastId });
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao salvar cláusula.", { id: toastId });
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao salvar clausula."), { id: toastId });
     } finally {
       setSavingClause(false);
     }
@@ -1295,8 +1413,11 @@ if (!neverShow) {
     setClauses(reordered);
     setDragOver(null);
     setDraggedIndex(null);
-    try { await reorderClauses(contractIdNum, draggedIndex, targetIndex); }
-    catch (err: any) { toast.error(err?.message || "Erro ao reordenar cláusulas."); }
+    try {
+      await reorderClauses(contractIdNum, draggedIndex, targetIndex);
+      refreshPreviewAfterMutation();
+    }
+    catch (err: any) { toast.error(getFriendlyApiErrorMessage(err, "Erro ao reordenar clausulas.")); }
   };
 
   const handleGeneratePdf = async () => {
@@ -1306,13 +1427,178 @@ if (!neverShow) {
       await generatePdf(contractIdNum);
       toast.success("PDF gerado e baixado!", { id: toastId });
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao gerar PDF.", { id: toastId });
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao gerar PDF."), { id: toastId });
     }
     setState("idle");
   };
 
+  const handleAutoGenerate = useCallback(async () => {
+    if (!contract) return;
+
+    setAutoGenerateStatus("loading");
+    setAutoGenerateError(null);
+
+    const toastId = toast.loading("Gerando clausulas juridicas...");
+
+    try {
+      const payload = normalizeAutoGeneratePayload(
+        {
+          ...legalContextInput,
+          authenticationMethods: parseAuthenticationMethodsInput(authenticationMethodsInput),
+        },
+        authenticationMethodsInput,
+      );
+
+      const result = await runMccAutoGenerate(contract.id, payload);
+
+      setAutoGenerateResult({
+        ...result.raw,
+        clauses: [...result.raw.clauses].sort((a, b) => a.orderIndex - b.orderIndex),
+      });
+      setMccRunResult(result.mcc);
+      setAutoGenerateStatus("success");
+      toast.success("Contrato inteligente gerado com sucesso.", { id: toastId });
+      await loadContract();
+      refreshPreviewAfterMutation();
+    } catch (err: any) {
+      const message = getFriendlyApiErrorMessage(err, "Nao foi possivel gerar clausulas juridicas.");
+      setAutoGenerateStatus("error");
+      setAutoGenerateError(message);
+      toast.error(message, { id: toastId });
+    }
+  }, [authenticationMethodsInput, contract, legalContextInput, loadContract, refreshPreviewAfterMutation]);
+
   const isAlreadyAdded = (templateId: string | number) =>
     clauses.some(c => String(c.clauseId) === String(templateId));
+
+  const previewIncludeClauseIds = layout.preview?.includeClauseIds ?? [];
+  const previewHiddenClauseIds = layout.preview?.hiddenClauseIds ?? [];
+  const clauseIdsInContract = clauses.map((clause) => String(clause.clauseId ?? clause.id));
+
+  const isClauseVisibleInPreview = useCallback((clauseId: string, inContract: boolean) => {
+    if (inContract) {
+      return !previewHiddenClauseIds.includes(clauseId);
+    }
+    return previewIncludeClauseIds.includes(clauseId);
+  }, [previewHiddenClauseIds, previewIncludeClauseIds]);
+
+  const handleTogglePreviewClause = useCallback((clauseId: string, inContract: boolean) => {
+    const hidden = new Set(previewHiddenClauseIds);
+    const included = new Set(previewIncludeClauseIds);
+
+    if (inContract) {
+      if (hidden.has(clauseId)) hidden.delete(clauseId);
+      else hidden.add(clauseId);
+      included.delete(clauseId);
+    } else {
+      if (included.has(clauseId)) included.delete(clauseId);
+      else included.add(clauseId);
+      hidden.delete(clauseId);
+    }
+
+    void saveLayoutPatch({
+      preview: {
+        includeClauseIds: Array.from(included),
+        hiddenClauseIds: Array.from(hidden),
+      },
+    });
+  }, [previewHiddenClauseIds, previewIncludeClauseIds, saveLayoutPatch]);
+
+  const moveClause = useCallback(async (rowIndex: number, direction: -1 | 1) => {
+    const nextIndex = rowIndex + direction;
+    if (nextIndex < 0 || nextIndex >= clauses.length) return;
+    try {
+      await reorderClauses(contractIdNum, rowIndex, nextIndex);
+      setClauses((current) => {
+        const reordered = [...current];
+        const [moved] = reordered.splice(rowIndex, 1);
+        reordered.splice(nextIndex, 0, moved);
+        return reordered;
+      });
+      refreshPreviewAfterMutation();
+    } catch (err: any) {
+      toast.error(getFriendlyApiErrorMessage(err, "Erro ao reordenar clausulas."));
+    }
+  }, [clauses.length, contractIdNum, refreshPreviewAfterMutation]);
+
+  const hasConfiguredLegalContext = Boolean(
+    legalContextInput.audience ||
+    legalContextInput.riskLevel ||
+    legalContextInput.contractModels?.length ||
+    legalContextInput.ipMode ||
+    legalContextInput.supportLevel ||
+    typeof legalContextInput.personalData === "boolean" ||
+    typeof legalContextInput.sensitiveData === "boolean" ||
+    typeof legalContextInput.sourceCodeDelivery === "boolean" ||
+    typeof legalContextInput.subscription === "boolean" ||
+    typeof legalContextInput.milestoneBilling === "boolean" ||
+    typeof legalContextInput.includeArbitration === "boolean" ||
+    typeof legalContextInput.includeEscrow === "boolean" ||
+    typeof legalContextInput.includePortfolioUse === "boolean" ||
+    typeof legalContextInput.includeChargebackRule === "boolean" ||
+    typeof legalContextInput.includeHandOver === "boolean" ||
+    authenticationMethodsInput.trim() ||
+    legalContextInput.forumCityUf?.trim() ||
+    legalContextInput.forumConnection?.trim() ||
+    legalContextInput.supportSummary?.trim() ||
+    legalContextInput.subprocessorSummary?.trim() ||
+    legalContextInput.securitySummary?.trim()
+  );
+
+  const legalStatusTone = autoGenerateResult
+    ? "emerald"
+    : hasConfiguredLegalContext
+    ? "accent"
+    : "amber";
+
+  const legalClauseCount = autoGenerateResult?.clauses.length ?? 0;
+  const missingTemplateFields = autoGenerateResult?.missingTemplateFields ?? [];
+  const mccRun = mccRunResult ?? (autoGenerateResult ? adaptAutoGenerateResponseToMcc(autoGenerateResult) : null);
+  const contractInsights = mergeContractInsights(contract, autoGenerateResult);
+  const clauseSearch = search.trim().toLowerCase();
+  const filteredContractClauses = clauses.filter((clause) => {
+    if (!clauseSearch) return true;
+    const title = clause.title?.toLowerCase() ?? "";
+    const clauseId = String(clause.clauseId ?? clause.id).toLowerCase();
+    return title.includes(clauseSearch) || clauseId.includes(clauseSearch);
+  });
+  const filteredSuggestedClauses = suggestedClauses.filter((suggestion) => {
+    if (!clauseSearch) return true;
+    return (
+      suggestion.title.toLowerCase().includes(clauseSearch) ||
+      suggestion.id.toLowerCase().includes(clauseSearch)
+    );
+  });
+  const hiddenContractClauses = clauses.filter((clause) =>
+    previewHiddenClauseIds.includes(String(clause.clauseId ?? clause.id))
+  );
+  const previewOnlySuggestedClauses = suggestedClauses.filter((suggestion) =>
+    previewIncludeClauseIds.includes(suggestion.id) && !isAlreadyAdded(suggestion.id)
+  );
+  const clauseCountCards = [
+    {
+      label: "No contrato",
+      value: clauses.length,
+      helper: "Clausulas que ja fazem parte do contrato e podem ser editadas.",
+    },
+    {
+      label: "Sugestoes",
+      value: suggestedClauses.length,
+      helper: "Entradas sugeridas pelo backend. Nada entra sozinho no contrato.",
+    },
+    {
+      label: "Ajustes do preview",
+      value: hiddenContractClauses.length + previewOnlySuggestedClauses.length,
+      helper: "Excecoes que mudam o que aparece no preview oficial.",
+    },
+    {
+      label: "Warnings juridicos",
+      value: autoGenerateResult?.warnings.length ?? 0,
+      helper: "Alertas de risco e recomendacoes retornadas pelo backend.",
+    },
+  ];
+  const previewPageIndexes = previewPageOffsets.map((_, index) => index);
+  const previewCanvasWidth = (PREVIEW_BASE_WIDTH * previewPageCount) + (PREVIEW_PAGE_GAP * Math.max(0, previewPageCount - 1));
 
   // ─────────────────────────────────────────────────────────────
   // EARLY RETURNS — depois de todos os hooks
@@ -1323,7 +1609,7 @@ if (!neverShow) {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Loader2 size={32} className="animate-spin text-accent mx-auto mb-4" />
-          <p className="text-muted-foreground text-sm">Carregando editor...</p>
+          <p className="text-muted-foreground text-sm">{isEnglish ? "Loading editor..." : "Carregando editor..."}</p>
         </div>
       </div>
     );
@@ -1334,10 +1620,10 @@ if (!neverShow) {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <AlertCircle size={32} className="text-destructive mx-auto mb-4" />
-          <p className="text-muted-foreground text-sm mb-4">Contrato não encontrado.</p>
+          <p className="text-muted-foreground text-sm mb-4">{t("editor.contractNotFound")}</p>
           <Link href="/contratos">
             <Button variant="outline" size="sm">
-              <ArrowLeft size={14} className="mr-1.5" /> Voltar para contratos
+              <ArrowLeft size={14} className="mr-1.5" /> {t("editor.backToContracts")}
             </Button>
           </Link>
         </div>
@@ -1350,15 +1636,291 @@ if (!neverShow) {
   // ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#0b0c0f] text-foreground">
       <div className="noise-overlay" />
 
       {showTour && <EditorTour onClose={() => setShowTour(false)} />}
 
-      <div className="relative border-b border-border/50 bg-background/90 backdrop-blur-sm z-40">
-        <header className="px-3 sm:px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0 flex-1 flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
+      <header className="relative z-40 flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] bg-[#0e1014]/95 px-3 py-2 backdrop-blur-sm lg:h-11 lg:flex-nowrap lg:gap-3 lg:py-0">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Link href="/contratos">
+            <button className="flex shrink-0 items-center gap-1 text-muted-foreground transition-colors hover:text-foreground">
+              <ArrowLeft size={14} />
+            </button>
+          </Link>
+
+          <div className="h-3.5 w-px shrink-0 bg-white/10" />
+
+          <span className="max-w-[120px] truncate text-[13px] font-semibold text-foreground/90 sm:max-w-[220px]">
+            {contract.clientName}
+          </span>
+          <span className="shrink-0 text-[11px] text-muted-foreground/50">
+            #{String(contract.id).padStart(4, "0")}
+          </span>
+
+          <div className="hidden h-3.5 w-px shrink-0 bg-white/10 sm:block" />
+
+          <div className="hidden items-center gap-1.5 sm:flex">
+            {previewLoadedOnce && (
+              <span className="flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/12 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                <Lock size={8} /> {isEnglish ? "Official" : "Oficial"}
+              </span>
+            )}
+            {previewRefreshing && !previewLoading && (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
+                <Loader2 size={8} className="animate-spin" /> {isEnglish ? "syncing..." : "sincronizando..."}
+              </span>
+            )}
+            <span
+              className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                hasPlan(planId, "premium")
+                  ? "border-purple-500/25 bg-purple-500/12 text-purple-300"
+                  : hasPlan(planId, "pro")
+                  ? "border-blue-500/25 bg-blue-500/12 text-blue-300"
+                  : "border-zinc-500/25 bg-zinc-500/12 text-zinc-400"
+              }`}
+            >
+              {hasPlan(planId, "premium") ? "Premium" : hasPlan(planId, "pro") ? "Pro" : "Free"}
+            </span>
+          </div>
+        </div>
+
+        <div className="hidden items-center gap-px overflow-hidden rounded-xl border border-white/[0.06] bg-[#111214] xl:flex">
+          {clauseCountCards.map((card, index) => (
+            <div
+              key={card.label}
+              title={card.helper}
+              className={`flex items-center gap-2 px-3 py-1.5 ${index < clauseCountCards.length - 1 ? "border-r border-white/[0.06]" : ""}`}
+            >
+              <span className="text-sm font-semibold leading-none text-foreground">{card.value}</span>
+              <span className="max-w-[64px] truncate text-[10px] leading-tight text-muted-foreground/60">{card.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <button
+            data-tour="btn-signature"
+            onClick={() => setShowProviderSigPanel((p) => !p)}
+            className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] transition-all ${
+              providerSavedExists
+                ? "border-[#ff6600]/35 bg-[#ff6600]/12 text-[#ff8a3d] hover:bg-[#ff6600]/20"
+                : "border-white/[0.08] text-muted-foreground/60 hover:border-[#ff6600]/40 hover:text-[#ff8a3d]"
+            }`}
+          >
+            <PenLine size={10} />
+            <span className="hidden sm:inline">{isEnglish ? "Signature" : "Assinatura"}</span>
+          </button>
+
+          <button
+            onClick={() => void loadPreview("manual")}
+            className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-2 py-1 text-[10px] text-muted-foreground/60 transition-all hover:border-accent/40 hover:text-accent"
+          >
+            <RotateCcw size={10} className={previewManualRefreshing ? "animate-spin" : ""} />
+            <span className="hidden sm:inline">{t("dashboard.nav.refresh")}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setLegalContextOpen(true)}
+            className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-2 py-1 text-[10px] text-muted-foreground/60 transition-all hover:border-[#ff6600]/40 hover:text-[#ff9a57]"
+          >
+            <AlertCircle size={10} />
+            <span className="hidden sm:inline">{isEnglish ? "Context" : "Contexto"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setClausePanelOpen(true)}
+            className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-2 py-1 text-[10px] text-muted-foreground/60 transition-all hover:border-[#ff6600]/40 hover:text-[#ff9a57] xl:hidden"
+          >
+            <Eye size={10} />
+            <span className="hidden sm:inline">{t("editor.clauses")}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openInspectorPanel("clausula")}
+            className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-2 py-1 text-[10px] text-muted-foreground/60 transition-all hover:border-[#ff6600]/40 hover:text-[#ff9a57] xl:hidden"
+          >
+            <PenLine size={10} />
+            <span className="hidden sm:inline">Inspector</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openInspectorPanel("aparencia")}
+            className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-2 py-1 text-[10px] text-muted-foreground/60 transition-all hover:border-[#ff6600]/40 hover:text-[#ff9a57] xl:hidden"
+          >
+            <SlidersHorizontal size={10} />
+            <span className="hidden sm:inline">{t("editor.appearance")}</span>
+          </button>
+
+          <LanguageToggle compact />
+
+          <div className="h-4 w-px bg-white/10" />
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 border-white/[0.08] bg-transparent px-2.5 text-[11px] hover:bg-white/5"
+            onClick={() => setBlueprintDialogOpen(true)}
+          >
+            Blueprint
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 gap-1.5 bg-[#ff6600] px-2.5 text-[11px] text-white hover:bg-[#e45c00]"
+            disabled={!legalBlueprint || legalBlueprintLoading || autoGenerateStatus === "loading"}
+            onClick={() => void handleAutoGenerate()}
+          >
+            {autoGenerateStatus === "loading" ? (
+              <><Loader2 size={11} className="animate-spin" /> {isEnglish ? "Generating..." : "Gerando..."}</>
+            ) : (
+              <><Sparkles size={11} /> {isEnglish ? "Generate" : "Gerar"}</>
+            )}
+          </Button>
+
+          <div className="h-4 w-px bg-white/10" />
+
+          <Button
+            data-tour="btn-pdf"
+            variant="outline"
+            size="sm"
+            onClick={handleGeneratePdf}
+            disabled={state === "generating-pdf"}
+            className="h-7 gap-1.5 border-white/[0.08] bg-transparent px-2.5 text-[11px] hover:bg-white/5"
+          >
+            {state === "generating-pdf"
+              ? <><Loader2 size={11} className="animate-spin" /> PDF...</>
+              : <><FileDown size={11} /> PDF</>
+            }
+          </Button>
+        </div>
+      </header>
+
+      {previewError && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-destructive/20 bg-destructive/10 px-4 py-1.5 text-[11px] text-destructive/80">
+          <AlertCircle size={11} /> {previewError}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {showLegalNotice && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="shrink-0 overflow-hidden"
+          >
+            <div className="relative border-b border-[#ff6600]/20 bg-[linear-gradient(90deg,rgba(255,102,0,0.10),rgba(255,102,0,0.04)_60%,transparent)]">
+              <div className="absolute inset-y-0 left-0 w-[3px] bg-[#ff6600]" />
+              <button
+                type="button"
+                onClick={() => setLegalContextOpen(true)}
+                className="group flex w-full items-center gap-3 px-4 py-2 pl-5 text-left"
+              >
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#ff6600]/20 bg-[#ff6600]/10 text-[#ff8a3d]">
+                  {hasConfiguredLegalContext ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+                </div>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+                  <span className="shrink-0 text-[11px] font-semibold text-[#ffb07a]">Aviso juridico</span>
+                  <span className="truncate text-[11px] text-zinc-300/80">
+                    {hasConfiguredLegalContext
+                      ? "Contexto configurado - clique para revisar risco e modelo."
+                      : "Configure o contexto juridico antes de gerar clausulas."}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {autoGenerateResult && (
+                      <Badge variant="outline" className="h-5 border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-300">
+                        {legalClauseCount} geradas
+                      </Badge>
+                    )}
+                    {legalContextInput.audience && (
+                      <Badge variant="outline" className="h-5 border-white/10 bg-black/20 text-[10px] uppercase text-zinc-300">
+                        {legalContextInput.audience}
+                      </Badge>
+                    )}
+                    {legalContextInput.riskLevel && (
+                      <Badge variant="outline" className="h-5 border-white/10 bg-black/20 text-[10px] capitalize text-zinc-300">
+                        Risco {legalContextInput.riskLevel}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-lg bg-[#ff6600] px-3 py-1 text-[11px] font-semibold text-white transition-transform group-hover:translate-x-0.5">
+                  Abrir
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLegalNotice(false)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-black/20 p-1 text-muted-foreground transition-colors hover:text-[#ff8a3d]"
+                aria-label="Fechar aviso"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {missingTemplateFields.length > 0 && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.16 }}
+            className="shrink-0 overflow-hidden"
+          >
+            <div className="flex items-center gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
+              <AlertCircle size={13} className="shrink-0 text-amber-400" />
+              <p className="shrink-0 text-[11px] font-medium text-amber-200">Faltam dados das partes.</p>
+              <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                {missingTemplateFields.slice(0, 4).map((field) => (
+                  <span key={field.key} className="rounded-full border border-amber-500/25 bg-black/15 px-2 py-0.5 text-[10px] text-amber-100/80">
+                    {field.label}
+                  </span>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 shrink-0 border-amber-500/30 bg-black/15 px-2.5 text-[10px] text-amber-100 hover:bg-amber-500/10"
+                onClick={() => setLegalContextOpen(true)}
+              >
+                Preencher
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showProviderSigPanel && (
+          <ProviderSignaturePanel
+            onSave={handleSaveProviderSignature}
+            onApply={handleApplyProviderSignature}
+            onDelete={handleDeleteProviderSignature}
+            onClose={() => setShowProviderSigPanel(false)}
+            savedExists={providerSavedExists === true}
+            saving={providerSigSaving}
+            applying={providerSigApplying}
+          />
+        )}
+      </AnimatePresence>
+
+      {false && contract && (
+        <>
+        <header className="flex flex-col gap-2.5 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:py-2.5">
+          <div className="min-w-0 flex-1 flex flex-col gap-2.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
               <Link href="/contratos">
                 <button className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm shrink-0">
                   <ArrowLeft size={15} /> Contratos
@@ -1369,58 +1931,53 @@ if (!neverShow) {
 
               <div className="flex flex-wrap items-center gap-2 min-w-0">
                 <span className="font-display text-sm font-semibold truncate max-w-[180px] sm:max-w-[260px] lg:max-w-none">
-                  {contract.clientName}
+                  {contract?.clientName}
                 </span>
 
                 <span className="text-xs text-muted-foreground/60 shrink-0">
-                  #{String(contract.id).padStart(4, "0")}
+                  #{String(contract?.id ?? 0).padStart(4, "0")}
                 </span>
 
-                {signatureLoading && (
+                {previewRefreshing && !previewLoading && (
                   <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
-                    <Loader2 size={9} className="animate-spin" /> verificando...
+                    <Loader2 size={9} className="animate-spin" /> sincronizando preview...
                   </span>
                 )}
 
-                {!signatureLoading && signatureObjectUrl && (
+                {previewLoadedOnce && (
                   <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 border border-green-500/30 text-green-400 font-semibold">
-                    <CheckCircle2 size={9} /> Contratante assinou
+                    <Lock size={9} /> Preview oficial
                   </span>
                 )}
 
-                {!signatureLoading && !signatureObjectUrl && (
-                  <button
-                    onClick={handleRefreshSignature}
-                    title="Verificar se o contratante já assinou"
-                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-border/40 text-muted-foreground/60 hover:border-accent/50 hover:text-accent transition-all"
-                  >
-                    <RotateCcw size={9} /> Verificar assinatura
-                  </button>
-                )}
+                <button
+                  onClick={() => void loadPreview("manual")}
+                  title="Recarregar preview protegido do backend"
+                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-border/40 text-muted-foreground/60 hover:border-accent/50 hover:text-accent transition-all"
+                >
+                  <RotateCcw size={9} /> Atualizar preview
+                </button>
 
                 <span className="text-border/30 hidden sm:inline">·</span>
 
-                {providerSigLoading ? (
-                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
-                    <Loader2 size={9} className="animate-spin" /> carregando...
-                  </span>
-                ) : providerSignatureUrl ? (
-                  <button
-                    data-tour="btn-signature"
-                    onClick={() => setShowProviderSigPanel((p) => !p)}
-                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#ff6600]/15 border border-[#ff6600]/40 text-[#ff6600] font-semibold hover:bg-[#ff6600]/25 transition-all"
-                  >
-                    <PenLine size={9} /> Minha assinatura ✓
-                  </button>
-                ) : (
-                  <button
-                    data-tour="btn-signature"
-                    onClick={() => setShowProviderSigPanel((p) => !p)}
-                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-border/40 text-muted-foreground/60 hover:border-[#ff6600]/50 hover:text-[#ff6600] transition-all"
-                  >
-                    <PenLine size={9} /> Minha assinatura
-                  </button>
-                )}
+                <button
+                  data-tour="btn-signature"
+                  onClick={() => setShowProviderSigPanel((p) => !p)}
+                  className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full transition-all ${
+                    providerSavedExists
+                      ? "bg-[#ff6600]/15 border border-[#ff6600]/40 text-[#ff6600] font-semibold hover:bg-[#ff6600]/25"
+                      : "border border-border/40 text-muted-foreground/60 hover:border-[#ff6600]/50 hover:text-[#ff6600]"
+                  }`}
+                >
+                  <PenLine size={9} /> Minha assinatura
+                </button>
+
+                <span
+                  className="text-[10px] px-2 py-0.5 rounded-full border border-border/40 text-muted-foreground/60 shrink-0"
+                  title="O preview oficial reflete somente alterações persistidas no backend."
+                >
+                  alterações salvas
+                </span>
 
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border shrink-0 ${
@@ -1436,8 +1993,14 @@ if (!neverShow) {
               </div>
             </div>
 
+            {previewError && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive/90">
+                {previewError}
+              </div>
+            )}
+
             {/* navegação mobile */}
-            <div data-tour="mobile-nav" className="flex lg:hidden rounded-xl border border-border/40 bg-card/30 p-1">
+            {false && <div data-tour="mobile-nav" className="flex lg:hidden rounded-xl border border-border/40 bg-card/30 p-1">
               <button
                 onClick={() => setMobileTab("biblioteca")}
                 className={`flex-1 rounded-lg py-2 text-xs font-medium transition-all ${
@@ -1468,7 +2031,7 @@ if (!neverShow) {
               >
                 Editor
               </button>
-            </div>
+            </div>}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -1498,626 +2061,941 @@ if (!neverShow) {
               onApply={handleApplyProviderSignature}
               onDelete={handleDeleteProviderSignature}
               onClose={() => setShowProviderSigPanel(false)}
-              savedExists={providerSavedExists}
+              savedExists={providerSavedExists === true}
               saving={providerSigSaving}
               applying={providerSigApplying}
             />
           )}
         </AnimatePresence>
-      </div>
+        </>
+      )}
 
-      <div className="flex-1 min-h-0">
-        {/* ── DESKTOP ── */}
-        <div className="hidden lg:flex h-[calc(100vh-88px)] min-h-0">
-          {/* LEFT */}
-          <aside data-tour="clause-library" className="w-[320px] xl:w-[340px] min-w-[280px] border-r border-border/50 flex flex-col bg-card/30">
-            <div className="px-4 py-3 border-b border-border/40 shrink-0">
-              <div className="flex items-center gap-2 mb-3">
-                <Library size={14} className="text-accent" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                  Cláusulas
-                </span>
-                {clausesLoading && <Loader2 size={11} className="animate-spin text-muted-foreground/60 ml-auto" />}
-              </div>
+      <Sheet open={legalContextOpen} onOpenChange={setLegalContextOpen}>
+        <SheetContent side="right" className="w-full overflow-y-auto border-border/60 bg-background p-0 sm:max-w-2xl">
+          <SheetHeader className="border-b border-border/40 px-6 py-5">
+            <SheetTitle>Contexto juridico</SheetTitle>
+            <SheetDescription>
+              Para configurar melhor o contrato e melhorar a experiencia, use o contexto juridico antes da auto-geracao.
+            </SheetDescription>
+          </SheetHeader>
 
-              <div className="relative mb-2">
-                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
-                <Input
-                  data-tour="clause-search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar cláusula…"
-                  className="pl-8 h-8 text-xs bg-background border-border/40"
+          <LegalContextSection
+            context={legalContextInput}
+            authenticationMethodsInput={authenticationMethodsInput}
+            onAuthenticationMethodsInputChange={setAuthenticationMethodsInput}
+            onContextChange={updateLegalContextInput}
+            onToggleContractModel={handleToggleContractModel}
+            blueprint={legalBlueprint}
+            blueprintLoading={legalBlueprintLoading}
+            blueprintError={legalBlueprintError}
+            onRetryBlueprint={() => void loadLegalBlueprint()}
+            onOpenBlueprint={() => setBlueprintDialogOpen(true)}
+            autoGenerateStatus={autoGenerateStatus}
+            autoGenerateError={autoGenerateError}
+            autoGenerateResult={autoGenerateResult}
+            mccRun={mccRun}
+            onGenerate={() => void handleAutoGenerate()}
+          />
+        </SheetContent>
+      </Sheet>
+
+      <LegalBlueprintDialog
+        open={blueprintDialogOpen}
+        onOpenChange={setBlueprintDialogOpen}
+        blueprint={legalBlueprint}
+        loading={legalBlueprintLoading}
+        error={legalBlueprintError}
+        onRetry={() => void loadLegalBlueprint()}
+      />
+
+      <Sheet open={clausePanelOpen} onOpenChange={setClausePanelOpen}>
+        <SheetContent side="left" className="flex h-full w-full flex-col overflow-hidden border-border/60 bg-[#0e1014] p-0 sm:max-w-sm">
+          <SheetHeader className="shrink-0 border-b border-white/[0.06] px-4 py-4 pr-12">
+            <SheetTitle>Clausulas</SheetTitle>
+            <SheetDescription>
+              Selecione, reorganize e controle o preview sem depender da sidebar fixa.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="min-h-0 flex-1 overflow-hidden p-2">
+            <ContractClauseNavigator
+              clauses={clauses}
+              filteredContractClauses={filteredContractClauses}
+              filteredSuggestedClauses={filteredSuggestedClauses}
+              hiddenContractClauses={hiddenContractClauses}
+              previewOnlySuggestedClauses={previewOnlySuggestedClauses}
+              clauseIdsInContract={clauseIdsInContract}
+              clauseSearch={search}
+              clauseExplorerTab={clauseExplorerTab}
+              selectedClause={selectedClause}
+              onSearchChange={setSearch}
+              onClauseExplorerTabChange={setClauseExplorerTab}
+              onSelectClause={(clause) => {
+                handleSelectClause(clause);
+                openInspectorPanel("clausula");
+              }}
+              onTogglePreviewClause={handleTogglePreviewClause}
+              onMoveClause={moveClause}
+              onRemoveClause={(rowId) => void handleRemoveClause(rowId)}
+              onAddSuggestion={(suggestion) => void handleAddClause({ id: suggestion.id, title: suggestion.title, content: "", category: "geral" } as ClauseTemplate)}
+              isAlreadyAdded={isAlreadyAdded}
+              isClauseVisibleInPreview={isClauseVisibleInPreview}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={inspectorPanelOpen} onOpenChange={setInspectorPanelOpen}>
+        <SheetContent side="right" className="flex h-full w-full flex-col overflow-hidden border-border/60 bg-[#0e1014] p-0 sm:max-w-md">
+          <SheetHeader className="shrink-0 border-b border-white/[0.06] px-4 py-4 pr-12">
+            <SheetTitle>Inspector</SheetTitle>
+            <SheetDescription>
+              Edite clausulas, contexto rapido e aparencia com os mesmos controles do painel lateral.
+            </SheetDescription>
+          </SheetHeader>
+
+          <Tabs value={rightTab} onValueChange={(value) => setRightTab(value as RightPanelTab)} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <TabsList className="grid h-9 w-full grid-cols-2 gap-1 rounded-none border-b border-white/[0.06] bg-transparent px-3">
+              <TabsTrigger
+                value="clausula"
+                className="h-7 rounded-md text-[11px] data-[state=active]:bg-white/10 data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground/60"
+              >
+                Juridico
+              </TabsTrigger>
+              <TabsTrigger
+                value="aparencia"
+                className="h-7 rounded-md text-[11px] data-[state=active]:bg-white/10 data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground/60"
+              >
+                Aparencia
+              </TabsTrigger>
+            </TabsList>
+
+            {rightTab === "clausula" ? (
+              <TabsContent value="clausula" className="mt-0 h-full min-h-0 overflow-hidden p-2">
+                <ContractClauseInspector
+                  selectedClause={selectedClause}
+                  editContent={editContent}
+                  savingClause={savingClause}
+                  autoGenerateResult={autoGenerateResult}
+                  contractInsights={contractInsights}
+                  clauseExplorerTab={clauseExplorerTab}
+                  onEditContentChange={setEditContent}
+                  onSaveClause={() => void handleSaveClause()}
+                  onCloseEditor={() => setSelectedClause(null)}
+                  onOpenLegalContext={() => setLegalContextOpen(true)}
                 />
-                {search && (
-                  <button
-                    onClick={() => setSearch("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground"
-                  >
-                    <X size={11} />
-                  </button>
-                )}
-              </div>
+              </TabsContent>
+            ) : (
+              <TabsContent value="aparencia" className="mt-0 flex h-full min-h-0 flex-col overflow-hidden">
+                <ContractLayoutPanel
+                  layout={layout}
+                  onChange={setLayout}
+                  onSavePatch={saveLayoutPatch}
+                  onPreviewRefresh={refreshPreviewAfterMutation}
+                  contractId={contractIdNum}
+                />
+              </TabsContent>
+            )}
+          </Tabs>
+        </SheetContent>
+      </Sheet>
 
-              <div className="flex flex-wrap gap-1">
-                {CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.value}
-                    onClick={() => setCategoryFilter(cat.value)}
-                    className={`text-[11px] px-2 py-1 rounded-full border transition-all ${
-                      categoryFilter === cat.value
-                        ? "bg-accent border-accent text-white"
-                        : "border-border/40 text-muted-foreground hover:border-border"
-                    }`}
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <aside className="relative z-20 hidden h-full w-[232px] shrink-0 flex-col border-r border-white/[0.05] bg-[#0e1014] xl:flex 2xl:w-[264px]">
+          <div className="flex h-9 shrink-0 items-center justify-between border-b border-white/[0.06] px-3">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
+              Clausulas
+            </span>
+            {clauses.length > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ff6600]/15 px-1 text-[9px] font-semibold text-[#ff9a57]">
+                {clauses.length}
+              </span>
+            )}
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ContractClauseNavigator
+              clauses={clauses}
+              filteredContractClauses={filteredContractClauses}
+              filteredSuggestedClauses={filteredSuggestedClauses}
+              hiddenContractClauses={hiddenContractClauses}
+              previewOnlySuggestedClauses={previewOnlySuggestedClauses}
+              clauseIdsInContract={clauseIdsInContract}
+              clauseSearch={search}
+              clauseExplorerTab={clauseExplorerTab}
+              selectedClause={selectedClause}
+              onSearchChange={setSearch}
+              onClauseExplorerTabChange={setClauseExplorerTab}
+              onSelectClause={handleSelectClause}
+              onTogglePreviewClause={handleTogglePreviewClause}
+              onMoveClause={moveClause}
+              onRemoveClause={(rowId) => void handleRemoveClause(rowId)}
+              onAddSuggestion={(suggestion) => void handleAddClause({ id: suggestion.id, title: suggestion.title, content: "", category: "geral" } as ClauseTemplate)}
+              isAlreadyAdded={isAlreadyAdded}
+              isClauseVisibleInPreview={isClauseVisibleInPreview}
+            />
+          </div>
+
+          {!showLegalNotice && (
+            <div className="shrink-0 border-t border-white/[0.05] px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setShowLegalNotice(true)}
+                className="flex w-full items-center gap-1.5 rounded-lg border border-[#ff6600]/20 bg-[#ff6600]/10 px-2.5 py-1.5 text-[10px] font-medium text-[#ff9a57] transition-colors hover:bg-[#ff6600]/15"
+              >
+                <AlertCircle size={10} /> Aviso juridico
+              </button>
+            </div>
+          )}
+        </aside>
+
+        <main
+          data-tour="preview"
+          className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[#0b0c0f]"
+        >
+          <div
+            className="pointer-events-none absolute inset-0 z-0 opacity-[0.16]"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)",
+              backgroundSize: "24px 24px",
+            }}
+          />
+
+          <div className="absolute left-1/2 top-2 z-20 w-[calc(100%-1rem)] -translate-x-1/2 px-2 sm:top-3 sm:w-auto sm:px-0">
+            <div className="flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-full border border-white/10 bg-[#0e1014]/90 px-3 py-1 text-center text-[10px] text-muted-foreground shadow-[0_4px_20px_rgba(0,0,0,0.5)] backdrop-blur-sm">
+              <Lock size={9} className="text-emerald-400" />
+              <span className="sm:hidden">Preview oficial</span>
+              <span className="hidden sm:inline">A4 ABNT - arraste para mover</span>
+              <span className="hidden text-muted-foreground/50 md:inline">Ctrl + scroll para zoom</span>
+              {previewPageCount > 1 && (
+                <span className="ml-1 rounded-full border border-white/10 bg-white/5 px-1.5 text-[9px] text-muted-foreground">
+                  {previewPageCount} folhas
+                </span>
+              )}
+              {autoGenerateResult && (
+                <span className="ml-1 rounded-full border border-emerald-500/20 bg-emerald-500/15 px-1.5 text-[9px] text-emerald-400">
+                  {legalClauseCount} cl.
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div data-no-pan className="absolute bottom-3 left-1/2 z-20 flex w-[calc(100%-1rem)] -translate-x-1/2 items-center justify-center gap-2 px-2 sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:w-auto sm:translate-x-0 sm:px-0">
+            <div className="flex items-center overflow-hidden rounded-xl border border-white/10 bg-[#0e1014]/90 text-muted-foreground shadow-[0_4px_20px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+              <button
+                type="button"
+                onClick={zoomPreviewOut}
+                className="flex h-7 w-8 items-center justify-center transition-colors hover:bg-white/5 hover:text-[#ff9a57] disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={previewZoom <= PREVIEW_ZOOM_MIN}
+                aria-label="Diminuir zoom"
+              >
+                <ZoomOut size={12} />
+              </button>
+              <span className="min-w-[46px] border-x border-white/10 px-2 text-center text-[10px] font-semibold text-zinc-300">
+                {Math.round(previewZoom * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={zoomPreviewIn}
+                className="flex h-7 w-8 items-center justify-center transition-colors hover:bg-white/5 hover:text-[#ff9a57] disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={previewZoom >= PREVIEW_ZOOM_MAX}
+                aria-label="Aumentar zoom"
+              >
+                <ZoomIn size={12} />
+              </button>
+            </div>
+
+            {(previewPan.x !== 0 || previewPan.y !== 0 || previewZoom !== 1) && (
+              <button
+                type="button"
+                onClick={resetPreviewView}
+                className="rounded-lg border border-white/10 bg-[#0e1014]/90 px-2.5 py-1 text-[10px] font-medium text-muted-foreground shadow-[0_4px_20px_rgba(0,0,0,0.45)] backdrop-blur-sm transition-colors hover:border-[#ff6600]/40 hover:text-[#ff9a57]"
+              >
+                Resetar
+              </button>
+            )}
+          </div>
+
+          <div
+            ref={previewStageRef}
+            className={`absolute inset-0 flex items-center justify-center px-2 pb-16 pt-16 select-none sm:px-4 sm:pb-4 sm:pt-8 ${isPreviewPanning ? "cursor-grabbing" : "cursor-grab"}`}
+            style={{ touchAction: "none" }}
+            onPointerDown={handlePreviewPointerDown}
+            onPointerMove={handlePreviewPointerMove}
+            onPointerUp={endPreviewPan}
+            onPointerCancel={endPreviewPan}
+            onLostPointerCapture={() => endPreviewPan()}
+            onWheel={handlePreviewWheel}
+          >
+            <div
+              className="shrink-0 overflow-visible"
+              style={{
+                width: previewCanvasWidth * previewScale,
+                height: PREVIEW_BASE_HEIGHT * previewScale,
+                transform: `translate3d(${previewPan.x}px, ${previewPan.y}px, 0)`,
+              }}
+            >
+              <div
+                className="flex items-start"
+                style={{
+                  gap: PREVIEW_PAGE_GAP,
+                  width: previewCanvasWidth,
+                  height: PREVIEW_BASE_HEIGHT,
+                  transform: `scale(${previewScale})`,
+                  transformOrigin: "top left",
+                }}
+              >
+                {previewPageIndexes.map((pageIndex) => (
+                  <div
+                    key={`${previewRenderKey}-${pageIndex}`}
+                    className="relative shrink-0 overflow-hidden rounded-2xl border border-black/30 bg-white shadow-[0_40px_120px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.04)]"
+                    style={{
+                      width: PREVIEW_BASE_WIDTH,
+                      height: PREVIEW_BASE_HEIGHT,
+                    }}
                   >
-                    {cat.label}
-                  </button>
+                    {previewPageCount > 1 && (
+                      <span className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border border-black/10 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-zinc-500 shadow-sm">
+                        Folha {pageIndex + 1}
+                      </span>
+                    )}
+                    <div
+                      className="absolute left-0 overflow-hidden"
+                      style={{
+                        top: PREVIEW_ABNT_TOP_MARGIN,
+                        width: PREVIEW_BASE_WIDTH,
+                        height: Math.min(
+                          PREVIEW_ABNT_SAFE_CONTENT_HEIGHT,
+                          Math.max(
+                            PREVIEW_MIN_PAGE_ADVANCE,
+                            (previewPageOffsets[pageIndex + 1] ?? previewContentHeight) - (previewPageOffsets[pageIndex] ?? 0),
+                          ),
+                        ),
+                      }}
+                    >
+                      <iframe
+                        ref={pageIndex === 0 ? iframeDesktopRef : undefined}
+                        src={previewHtml ? undefined : previewDocumentUrl || undefined}
+                        srcDoc={previewHtml || undefined}
+                        onLoad={(event) => handlePreviewPageFrameLoad(event, pageIndex)}
+                        onError={() => {
+                          void refreshProtectedPreview("asset-error", true);
+                          requestPreviewAssetRetry();
+                        }}
+                        className="border-0 pointer-events-none"
+                        style={{
+                          width: PREVIEW_BASE_WIDTH,
+                          height: previewContentHeight,
+                          transform: `translate3d(0, -${previewPageOffsets[pageIndex] ?? 0}px, 0)`,
+                          transformOrigin: "top left",
+                        }}
+                        title={`Contract Preview - Folha ${pageIndex + 1}`}
+                        sandbox="allow-same-origin"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
+          </div>
 
-            <ScrollArea className="flex-1 min-h-0">
-              {clausesLoading ? (
-                <ClauseSkeletons />
-              ) : clauseTemplates.length === 0 ? (
-                <div className="py-12 px-4 text-center">
-                  <Library size={24} className="mx-auto mb-3 text-muted-foreground/30" />
-                  <p className="text-xs text-muted-foreground/60">Nenhuma cláusula disponível</p>
-                  {search && (
-                    <button onClick={() => setSearch("")} className="mt-2 text-xs text-accent hover:underline">
-                      Limpar busca
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="p-2 space-y-1.5">
-                  {clauseTemplates.map((template) => {
-                    const already = isAlreadyAdded(template.id);
-                    const isOpen = previewClause?.id === template.id;
-
-                    return (
-                      <div key={String(template.id)}>
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") setPreviewClause(isOpen ? null : template);
-                          }}
-                          onClick={() => setPreviewClause(isOpen ? null : template)}
-                          className={`rounded-lg border p-3 cursor-pointer transition-all select-none ${
-                            isOpen
-                              ? "border-accent/60 bg-accent/5"
-                              : "border-border/30 bg-background/50 hover:border-border/60 hover:bg-background/80"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-medium text-foreground leading-tight flex-1">
-                              {template.title}
-                            </p>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <span className="text-[10px] px-1.5 py-0.5 rounded border border-border/30 text-muted-foreground/60 whitespace-nowrap capitalize">
-                                {template.category}
-                              </span>
-                              <ChevronDown
-                                size={11}
-                                className="text-muted-foreground/50 transition-transform duration-150"
-                                style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}
-                              />
-                            </div>
-                          </div>
-
-                          {template.description && !isOpen && (
-                            <p className="mt-1 text-[11px] text-muted-foreground/70 line-clamp-2 leading-relaxed">
-                              {template.description}
-                            </p>
-                          )}
-                        </div>
-
-                        <AnimatePresence>
-                          {isOpen && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.18, ease: "easeOut" }}
-                              className="overflow-hidden"
-                            >
-                              <div className="mt-1 rounded-xl border border-accent/40 bg-card overflow-hidden">
-                                <div style={{ height: 3, background: "var(--accent, #ff6600)" }} />
-
-                                <div className="p-3 space-y-2.5">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <p className="text-xs font-semibold text-foreground leading-tight flex-1">
-                                      {template.title}
-                                    </p>
-                                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                                      <span className="text-[10px] px-1.5 py-0.5 rounded border border-accent/30 text-accent capitalize font-medium">
-                                        {template.category}
-                                      </span>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setPreviewClause(null);
-                                        }}
-                                        className="text-muted-foreground/40 hover:text-muted-foreground transition-colors p-0.5"
-                                      >
-                                        <X size={11} />
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  {template.description && (
-                                    <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
-                                      {template.description}
-                                    </p>
-                                  )}
-
-                                  <div className="rounded-lg bg-background border border-border/30 p-2.5 max-h-36 overflow-y-auto">
-                                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/40 mb-1.5 font-semibold">
-                                      Texto da cláusula
-                                    </p>
-                                    <p className="text-[11px] text-muted-foreground/75 leading-relaxed whitespace-pre-wrap">
-                                      {template.content}
-                                    </p>
-                                  </div>
-
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (!already) {
-                                        handleAddClause(template);
-                                        setPreviewClause(null);
-                                      }
-                                    }}
-                                    disabled={already}
-                                    className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all ${
-                                      already
-                                        ? "bg-accent/10 text-accent border border-accent/20 cursor-default"
-                                        : "bg-accent text-white hover:bg-accent/90 active:scale-[0.99]"
-                                    }`}
-                                  >
-                                    {already ? (
-                                      <><CheckCircle2 size={11} /> Já adicionada</>
-                                    ) : (
-                                      <><Plus size={11} /> Adicionar ao contrato</>
-                                    )}
-                                  </button>
-                                </div>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </ScrollArea>
-          </aside>
-
-          {/* CENTER */}
-          <main className="flex-1 min-w-0 flex flex-col overflow-hidden bg-zinc-900/30">
-            <div className="px-4 py-2.5 border-b border-border/40 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <Eye size={13} className="text-muted-foreground" />
-                <span className="text-xs text-muted-foreground font-medium">Preview do contrato</span>
+          {((previewLoading && !previewLoadedOnce) || (previewManualRefreshing && previewLoadedOnce)) && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0b0c0f]/70 backdrop-blur-[2px]">
+              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#111214] px-4 py-2.5 text-xs font-medium text-muted-foreground shadow-xl">
+                <Loader2 size={13} className="animate-spin text-[#ff6600]" />
+                {previewLoading && !previewLoadedOnce ? "Carregando preview oficial..." : "Atualizando preview..."}
               </div>
-              <span className="text-xs text-muted-foreground/60">
-                {clauses.length} cláusula{clauses.length !== 1 ? "s" : ""}
-              </span>
             </div>
+          )}
+        </main>
 
-            <div className="flex-1 min-h-0 flex overflow-hidden">
-              <div className="flex-1 min-w-0 overflow-auto p-4 xl:p-6 flex justify-center">
-                <div data-tour="preview" className="w-full max-w-[800px] aspect-[800/1122] min-h-[520px] shadow-2xl rounded-xl overflow-hidden bg-white">
-                  <iframe
-                    ref={iframeDesktopRef}
-                    srcDoc={previewHtml}
-                    className="w-full h-full border-0"
-                    title="Contract Preview"
-                    sandbox="allow-same-origin"
-                  />
-                </div>
+        <aside className="relative z-20 hidden h-full w-[264px] shrink-0 flex-col border-l border-white/[0.05] bg-[#0e1014] xl:flex 2xl:w-[304px]">
+          <Tabs value={rightTab} onValueChange={(value) => setRightTab(value as RightPanelTab)} className="flex h-full min-h-0 flex-col overflow-hidden">
+            <div className="shrink-0 border-b border-white/[0.06]">
+              <div className="flex h-9 items-center justify-between px-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
+                  Inspector
+                </span>
+                <Badge
+                  variant="outline"
+                  className={`h-4 px-1.5 text-[9px] ${
+                    layoutSaving === "saving"
+                      ? "border-[#ff6600]/30 bg-[#ff6600]/10 text-[#ff9a57]"
+                      : layoutSaving === "saved"
+                      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400"
+                      : "border-white/10 bg-transparent text-muted-foreground/50"
+                  }`}
+                >
+                  {layoutSaving === "saving" ? "salvando..." : layoutSaving === "saved" ? "salvo" : "pronto"}
+                </Badge>
               </div>
-
-              {clauses.length > 0 && (
-                <aside data-tour="clause-order" className="w-[220px] xl:w-[240px] border-l border-border/40 flex flex-col bg-card/20 shrink-0">
-                  <div className="px-3 py-2.5 border-b border-border/40 shrink-0">
-                    <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                      Ordem
-                    </span>
-                  </div>
-
-                  <ScrollArea className="flex-1 min-h-0">
-                    <div className="p-2 space-y-1">
-                      {clauses.map((clause, i) => (
-                        <div
-                          key={clause.id}
-                          draggable
-                          onDragStart={() => handleDragStart(i)}
-                          onDragOver={(e) => handleDragOver(e, i)}
-                          onDrop={(e) => handleDrop(e, i)}
-                          onDragEnd={() => { setDragOver(null); setDraggedIndex(null); }}
-                          onClick={() => handleSelectClause(clause)}
-                          className={`flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer text-xs transition-all group ${
-                            selectedClause?.id === clause.id
-                              ? "bg-accent/15 border border-accent/30 text-accent"
-                              : dragOver === i
-                              ? "bg-accent/10 border border-accent/20"
-                              : "hover:bg-card/60 border border-transparent"
-                          }`}
-                        >
-                          <GripVertical size={12} className="text-muted-foreground/40 flex-shrink-0 cursor-grab" />
-                          <span className="flex-1 truncate leading-tight">{clause.title}</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleRemoveClause(clause.id); }}
-                            className="opacity-0 group-hover:opacity-100 text-muted-foreground/50 hover:text-destructive transition-all"
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </aside>
-              )}
-            </div>
-          </main>
-
-          {/* RIGHT */}
-          <aside className="w-[360px] xl:w-[400px] min-w-[320px] border-l border-border/50 flex flex-col bg-card/30">
-            <div className="flex border-b border-border/40 shrink-0">
-              <button
-                onClick={() => setRightTab("clausula")}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-all border-b-2 ${
-                  rightTab === "clausula"
-                    ? "border-accent text-accent"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Save size={11} /> Cláusula
-              </button>
-
-              <button
-                data-tour="tab-aparencia"
-                onClick={() => setRightTab("aparencia")}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-all border-b-2 ${
-                  rightTab === "aparencia"
-                    ? "border-accent text-accent"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Palette size={11} /> Aparência
-                {!isPro && <Lock size={10} className="text-yellow-400 ml-0.5" />}
-              </button>
+              <TabsList className="grid h-8 w-full grid-cols-2 gap-1 rounded-none border-t border-white/[0.06] bg-transparent px-2">
+                <TabsTrigger
+                  value="clausula"
+                  className="h-6 rounded-md text-[11px] data-[state=active]:bg-white/10 data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground/60"
+                >
+                  Juridico
+                </TabsTrigger>
+                <TabsTrigger
+                  value="aparencia"
+                  className="h-6 rounded-md text-[11px] data-[state=active]:bg-white/10 data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground/60"
+                >
+                  Aparencia
+                </TabsTrigger>
+              </TabsList>
             </div>
 
             <AnimatePresence mode="wait">
-              {rightTab === "clausula" && (
+              {rightTab === "clausula" ? (
                 <motion.div
-                  key="clausula"
-                  initial={{ opacity: 0, x: 10 }}
+                  key="juridico"
+                  initial={{ opacity: 0, x: 6 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.15 }}
-                  className="flex-1 min-h-0 flex flex-col overflow-hidden"
+                  exit={{ opacity: 0, x: -6 }}
+                  transition={{ duration: 0.14 }}
+                  className="min-h-0 flex-1 overflow-hidden"
                 >
-                  {selectedClause ? (
-                    <>
-                      <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between shrink-0">
-                        <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                          Editar Cláusula
-                        </span>
-                        <button
-                          onClick={() => setSelectedClause(null)}
-                          className="text-muted-foreground/50 hover:text-foreground transition-colors"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-
-                      <ScrollArea className="flex-1 min-h-0">
-                        <div className="p-4 space-y-4">
-                          <div>
-                            <p className="text-xs font-semibold text-foreground mb-1">{selectedClause.title}</p>
-                            <span className="text-xs text-muted-foreground/60 border border-border/30 rounded px-1.5 py-0.5 capitalize">
-                              {selectedClause.category}
-                            </span>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-muted-foreground font-medium">Conteúdo personalizado</label>
-                            <Textarea
-                              value={editContent}
-                              onChange={(e) => setEditContent(e.target.value)}
-                              rows={12}
-                              className="text-xs bg-background border-border/40 resize-none leading-relaxed min-h-[320px]"
-                              placeholder="Personalize o texto desta cláusula…"
-                            />
-                            <p className="text-xs text-muted-foreground/50">
-                              Use {"{{cliente}}"}, {"{{valor}}"}, {"{{data_execucao}}"} como variáveis.
-                            </p>
-                          </div>
-
-                          <div className="flex gap-2">
-                            <Button
-                              onClick={handleSaveClause}
-                              disabled={savingClause}
-                              size="sm"
-                              className="flex-1 h-9 text-xs"
-                            >
-                              {savingClause ? (
-                                <><Loader2 size={12} className="animate-spin" /> Salvando…</>
-                              ) : (
-                                <><Save size={12} /> Salvar</>
-                              )}
-                            </Button>
-
-                            <Button
-                              onClick={() => setEditContent(selectedClause.content)}
-                              variant="outline"
-                              size="sm"
-                              className="border-border/50 text-xs h-9"
-                            >
-                              Restaurar
-                            </Button>
-                          </div>
-
-                          <div className="border-t border-border/40 pt-4">
-                            <button
-                              onClick={() => handleRemoveClause(selectedClause.id)}
-                              className="w-full text-xs py-2 rounded-md border border-destructive/30 text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-all flex items-center justify-center gap-1.5"
-                            >
-                              <Trash2 size={12} /> Remover esta cláusula
-                            </button>
-                          </div>
-                        </div>
-                      </ScrollArea>
-                    </>
-                  ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3">
-                      <Save size={28} className="text-muted-foreground/20" />
-                      <p className="text-xs text-muted-foreground/50 leading-relaxed">
-                        Clique em uma cláusula na coluna de ordem para editá-la.
-                      </p>
-                    </div>
-                  )}
+                  <TabsContent value="clausula" className="mt-0 h-full min-h-0 overflow-hidden p-2">
+                    <ContractClauseInspector
+                      selectedClause={selectedClause}
+                      editContent={editContent}
+                      savingClause={savingClause}
+                      autoGenerateResult={autoGenerateResult}
+                      contractInsights={contractInsights}
+                      clauseExplorerTab={clauseExplorerTab}
+                      onEditContentChange={setEditContent}
+                      onSaveClause={() => void handleSaveClause()}
+                      onCloseEditor={() => setSelectedClause(null)}
+                      onOpenLegalContext={() => setLegalContextOpen(true)}
+                    />
+                  </TabsContent>
                 </motion.div>
-              )}
-
-              {rightTab === "aparencia" && (
+              ) : (
                 <motion.div
                   key="aparencia"
-                  initial={{ opacity: 0, x: 10 }}
+                  initial={{ opacity: 0, x: 6 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.15 }}
-                  className="flex-1 min-h-0 flex flex-col overflow-hidden"
+                  exit={{ opacity: 0, x: -6 }}
+                  transition={{ duration: 0.14 }}
+                  className="min-h-0 flex-1 overflow-hidden"
                 >
-                  <AppearancePanel
-                    layout={layout}
-                    onChange={setLayout}
-                    planId={planId}
-                    contractId={contractIdNum}
-                  />
+                  <TabsContent value="aparencia" className="mt-0 flex h-full min-h-0 flex-col overflow-hidden">
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                      <ContractLayoutPanel
+                        layout={layout}
+                        onChange={setLayout}
+                        onSavePatch={saveLayoutPatch}
+                        onPreviewRefresh={refreshPreviewAfterMutation}
+                        contractId={contractIdNum}
+                      />
+                    </div>
+                  </TabsContent>
                 </motion.div>
               )}
             </AnimatePresence>
-          </aside>
-        </div>
+          </Tabs>
+        </aside>
+      </div>
 
-        {/* ── MOBILE / TABLET ── */}
-        <div className="lg:hidden flex flex-col min-h-[calc(100vh-120px)]">
-          {mobileTab === "biblioteca" && (
-            <section data-tour="clause-library" className="flex-1 min-h-0 flex flex-col bg-card/30">
-              <div className="px-4 py-3 border-b border-border/40 shrink-0">
-                <div className="flex items-center gap-2 mb-3">
-                  <Library size={14} className="text-accent" />
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                    Cláusulas
-                  </span>
-                  {clausesLoading && <Loader2 size={11} className="animate-spin text-muted-foreground/60 ml-auto" />}
-                </div>
-
-                <div className="relative mb-2">
-                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar cláusula…"
-                    className="pl-8 h-8 text-xs bg-background border-border/40"
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-1">
-                  {CATEGORIES.map((cat) => (
-                    <button
-                      key={cat.value}
-                      onClick={() => setCategoryFilter(cat.value)}
-                      className={`text-[11px] px-2 py-1 rounded-full border transition-all ${
-                        categoryFilter === cat.value
-                          ? "bg-accent border-accent text-white"
-                          : "border-border/40 text-muted-foreground hover:border-border"
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <ScrollArea className="flex-1 min-h-0">
-                <div className="p-2 space-y-1.5">
-                  {clauseTemplates.map((template) => {
-                    const already = isAlreadyAdded(template.id);
-                    return (
-                      <button
-                        key={String(template.id)}
-                        onClick={() => { if (!already) handleAddClause(template); }}
-                        className="w-full text-left rounded-lg border border-border/30 bg-background/60 p-3 hover:border-border/60 transition-all"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs font-medium text-foreground">{template.title}</p>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded border border-border/30 text-muted-foreground/60 capitalize">
-                            {template.category}
-                          </span>
-                        </div>
-                        {template.description && (
-                          <p className="mt-1 text-[11px] text-muted-foreground/70 line-clamp-2">
-                            {template.description}
-                          </p>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-            </section>
-          )}
-
-          {mobileTab === "preview" && (
-            <section className="flex-1 min-h-0 flex flex-col bg-zinc-900/30">
-              <div className="px-4 py-2.5 border-b border-border/40 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <Eye size={13} className="text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground font-medium">Preview do contrato</span>
-                </div>
-                <span className="text-xs text-muted-foreground/60">
-                  {clauses.length} cláusula{clauses.length !== 1 ? "s" : ""}
-                </span>
-              </div>
-
-              <div className="flex-1 min-h-0 overflow-auto p-3 sm:p-4">
-                <div data-tour="preview" className="mx-auto w-full max-w-[800px] aspect-[800/1122] min-h-[420px] rounded-xl overflow-hidden shadow-2xl bg-white">
-                  <iframe
-                    ref={iframeMobileRef}
-                    srcDoc={previewHtml}
-                    className="w-full h-full border-0"
-                    title="Contract Preview Mobile"
-                    sandbox="allow-same-origin"
-                  />
-                </div>
-
-                {clauses.length > 0 && (
-                  <div className="mt-4 rounded-xl border border-border/40 bg-card/30">
-                    <div className="px-3 py-2.5 border-b border-border/40">
-                      <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                        Ordem das cláusulas
-                      </span>
-                    </div>
-
-                    <div className="p-2 space-y-1">
-                      {clauses.map((clause) => (
-                        <button
-                          key={clause.id}
-                          onClick={() => {
-                            handleSelectClause(clause);
-                            setMobileTab("editor");
-                          }}
-                          className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition-all ${
-                            selectedClause?.id === clause.id
-                              ? "bg-accent/15 border border-accent/30 text-accent"
-                              : "border border-transparent hover:bg-card/60"
-                          }`}
-                        >
-                          <GripVertical size={12} className="text-muted-foreground/40 shrink-0" />
-                          <span className="flex-1 truncate text-left">{clause.title}</span>
-                        </button>
-                      ))}
-                    </div>
+      {false && contract && (
+        <div className="flex min-h-full flex-col gap-2.5 p-2.5 xl:h-full xl:gap-3 xl:p-3">
+          <section className="grid shrink-0 gap-2.5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+            {showLegalNotice ? (
+              <div className="relative min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setLegalContextOpen(true)}
+                  className="group relative w-full overflow-hidden rounded-2xl border border-[#ff6600]/30 bg-[linear-gradient(135deg,rgba(255,102,0,0.18),rgba(255,102,0,0.08)_42%,rgba(17,18,20,1)_100%)] px-4 py-3 pr-12 text-left transition-all hover:border-[#ff6600]/55 hover:shadow-[0_18px_50px_rgba(255,102,0,0.12)]"
+                >
+              <div className="absolute inset-y-0 left-0 w-1 bg-[#ff6600]" />
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#ff6600]/25 bg-[#ff6600]/14 text-[#ff8a3d]">
+                    {hasConfiguredLegalContext ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
                   </div>
+
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="border-[#ff6600]/30 bg-[#ff6600]/10 text-[#ffb07a]">
+                        Aviso juridico
+                      </Badge>
+                      {autoGenerateResult ? (
+                        <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+                          {legalClauseCount} clausulas geradas
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-border/40 bg-background/60 text-muted-foreground">
+                          Revise antes de gerar
+                        </Badge>
+                      )}
+                    </div>
+
+                    <p className="text-sm font-semibold text-foreground xl:text-base">
+                      {hasConfiguredLegalContext
+                        ? "O contexto juridico esta configurado, mas continua sendo o melhor ponto para revisar risco e modelo."
+                        : "Abra o contexto juridico antes de concluir o contrato para evitar geracoes fracas ou incompletas."}
+                    </p>
+
+                    <p className="text-xs leading-5 text-zinc-300/85">
+                      {autoGenerateResult
+                        ? "Use esse aviso rapido para conferir publico, risco e modelos ativos sem perder o foco do editor."
+                        : "Esse atalho concentra publico, risco, modelos e warnings num unico lugar para o usuario agir rapido."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                  {legalContextInput.audience && (
+                    <Badge variant="outline" className="border-border/40 bg-black/20 text-zinc-200 uppercase">
+                      {legalContextInput.audience}
+                    </Badge>
+                  )}
+                  {legalContextInput.riskLevel && (
+                    <Badge variant="outline" className="border-border/40 bg-black/20 text-zinc-200 capitalize">
+                      Risco {legalContextInput.riskLevel}
+                    </Badge>
+                  )}
+                  {legalContextInput.contractModels?.slice(0, 2).map((model) => (
+                    <Badge key={model} variant="outline" className="border-border/40 bg-black/20 text-zinc-200">
+                      {model}
+                    </Badge>
+                  ))}
+                  <span className="inline-flex items-center rounded-xl bg-[#ff6600] px-3.5 py-2 text-xs font-semibold text-white shadow-[0_12px_30px_rgba(255,102,0,0.28)] transition-transform group-hover:translate-x-0.5">
+                    Abrir aviso juridico
+                  </span>
+                </div>
+              </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowLegalNotice(false)}
+                  className="absolute right-3 top-3 rounded-full border border-white/10 bg-black/20 p-1.5 text-muted-foreground transition-colors hover:border-[#ff6600]/40 hover:text-[#ff8a3d]"
+                  aria-label="Remover aviso juridico"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowLegalNotice(true)}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#ff6600]/30 bg-[#111214] px-4 py-2.5 text-sm font-semibold text-[#ff9a57] transition-all hover:border-[#ff6600]/55 hover:bg-[#ff6600]/10"
+              >
+                <AlertCircle size={15} />
+                Mostrar aviso juridico
+              </button>
+            )}
+
+            <div className="flex w-full flex-col gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-full justify-center border-border/50 bg-[#111214] px-2 text-[11px] sm:text-xs"
+                onClick={() => setBlueprintDialogOpen(true)}
+              >
+                Blueprint juridico
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 w-full justify-center gap-1.5 px-2 text-[11px] sm:text-xs bg-[#ff6600] text-white hover:bg-[#e45c00]"
+                disabled={!legalBlueprint || legalBlueprintLoading || autoGenerateStatus === "loading"}
+                onClick={() => void handleAutoGenerate()}
+              >
+                {autoGenerateStatus === "loading" ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Gerando clausulas...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    Gerar clausulas automaticamente
+                  </>
                 )}
+              </Button>
+            </div>
+          </section>
+
+          <section className="hidden">
+            <div className="flex flex-col gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+              <div className="space-y-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className={`${
+                      legalStatusTone === "emerald"
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                        : legalStatusTone === "accent"
+                        ? "border-accent/30 bg-accent/10 text-accent"
+                        : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                    }`}
+                  >
+                    Contexto juridico
+                  </Badge>
+                  {autoGenerateResult ? (
+                    <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+                      {legalClauseCount} clausulas geradas
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-border/40 bg-background/60 text-muted-foreground">
+                      Recomendado antes da auto-geracao
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <h2 className="text-base font-semibold text-foreground xl:text-lg">
+                    {autoGenerateResult
+                      ? "Seu contrato ja esta apoiado pelo motor juridico"
+                      : "Antes de gerar clausulas, vale configurar o contexto juridico"}
+                  </h2>
+                  <p className="max-w-3xl text-sm leading-5 text-muted-foreground xl:max-w-2xl">
+                    {autoGenerateResult
+                      ? "Aqui voce ajusta o contrato com mais clareza: contexto, sugestoes, preview oficial e aparencia. Sempre que voce salva algo importante, o backend recompõe o documento final."
+                      : "O contexto juridico orienta risco, audience, modelos de contrato e warnings. Ele existe para o usuario entender o impacto das escolhas antes de gerar o texto consolidado."}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {legalContextInput.audience && (
+                    <Badge variant="outline" className="border-border/40 bg-background/60 text-muted-foreground uppercase">
+                      {legalContextInput.audience}
+                    </Badge>
+                  )}
+                  {legalContextInput.riskLevel && (
+                    <Badge variant="outline" className="border-border/40 bg-background/60 text-muted-foreground capitalize">
+                      Risco {legalContextInput.riskLevel}
+                    </Badge>
+                  )}
+                  {legalContextInput.contractModels?.map((model) => (
+                    <Badge key={model} variant="outline" className="border-border/40 bg-background/60 text-muted-foreground">
+                      {model}
+                    </Badge>
+                  ))}
+                  {!hasConfiguredLegalContext && (
+                    <Badge variant="outline" className="border-border/40 bg-background/60 text-muted-foreground">
+                      Configure o contexto para uma geracao mais precisa
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex w-full flex-col gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-full justify-center border-border/50 px-2 text-[11px] sm:text-xs"
+                  onClick={() => setBlueprintDialogOpen(true)}
+                >
+                  Blueprint juridico
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-full justify-center border-border/50 px-2 text-[11px] sm:text-xs"
+                  onClick={() => setLegalContextOpen(true)}
+                >
+                  Configurar contexto juridico
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 w-full justify-center gap-1.5 px-2 text-[11px] sm:text-xs"
+                  disabled={!legalBlueprint || legalBlueprintLoading || autoGenerateStatus === "loading"}
+                  onClick={() => void handleAutoGenerate()}
+                >
+                  {autoGenerateStatus === "loading" ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Gerando clausulas...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} />
+                      Gerar clausulas automaticamente
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid shrink-0 grid-cols-2 gap-1.5 xl:grid-cols-4">
+            {clauseCountCards.map((card) => (
+              <div
+                key={card.label}
+                title={card.helper}
+                className="min-w-0 rounded-xl border border-white/5 bg-[linear-gradient(180deg,#171a20_0%,#101215_100%)] px-2.5 py-1.5 shadow-[0_10px_30px_rgba(0,0,0,0.18)]"
+              >
+                <p className="truncate text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{card.label}</p>
+                <div className="mt-1 flex items-end justify-between gap-2">
+                  <span className="text-lg font-semibold leading-none text-foreground">{card.value}</span>
+                  <span className="rounded-full border border-border/30 px-1.5 py-0.5 text-[9px] text-muted-foreground">ao vivo</span>
+                </div>
+              </div>
+            ))}
+          </section>
+
+          {missingTemplateFields.length > 0 && (
+            <section className="shrink-0 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-amber-200">Faltam dados das partes para completar o contrato.</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {missingTemplateFields.map((field) => (
+                      <span key={field.key} className="rounded-full border border-amber-500/25 bg-black/15 px-2.5 py-1 text-[11px] text-amber-100/85" title={field.helperText}>
+                        {field.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full shrink-0 border-amber-500/30 bg-black/15 text-amber-100 hover:bg-amber-500/10 sm:w-auto"
+                  onClick={() => setLegalContextOpen(true)}
+                >
+                  Preencher dados
+                </Button>
               </div>
             </section>
           )}
 
-          {mobileTab === "editor" && (
-            <section className="flex-1 min-h-0 flex flex-col bg-card/30">
-              <div className="flex border-b border-border/40 shrink-0">
-                <button
-                  onClick={() => setRightTab("clausula")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-all border-b-2 ${
-                    rightTab === "clausula"
-                      ? "border-accent text-accent"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Save size={11} /> Cláusula
-                </button>
+          <div
+            className="grid min-h-0 flex-1 gap-2.5 md:[grid-template-columns:var(--editor-grid-md)] 2xl:[grid-template-columns:var(--editor-grid-2xl)]"
+            style={{
+              "--editor-grid-md": `${clauseNavigatorWidth}px 20px minmax(0,1.85fr) 300px`,
+              "--editor-grid-2xl": `${clauseNavigatorWidth}px 20px minmax(0,2fr) 320px`,
+            } as CSSProperties}
+          >
+            <aside className="min-h-0 min-w-0 overflow-hidden rounded-2xl border border-border/40 bg-[#111214] md:order-1">
+              <ContractClauseNavigator
+                clauses={clauses}
+                filteredContractClauses={filteredContractClauses}
+                filteredSuggestedClauses={filteredSuggestedClauses}
+                hiddenContractClauses={hiddenContractClauses}
+                previewOnlySuggestedClauses={previewOnlySuggestedClauses}
+                clauseIdsInContract={clauseIdsInContract}
+                clauseSearch={search}
+                clauseExplorerTab={clauseExplorerTab}
+                selectedClause={selectedClause}
+                onSearchChange={setSearch}
+                onClauseExplorerTabChange={setClauseExplorerTab}
+                onSelectClause={handleSelectClause}
+                onTogglePreviewClause={handleTogglePreviewClause}
+                onMoveClause={moveClause}
+                onRemoveClause={(rowId) => void handleRemoveClause(rowId)}
+                onAddSuggestion={(suggestion) => void handleAddClause({ id: suggestion.id, title: suggestion.title, content: "", category: "geral" } as ClauseTemplate)}
+                isAlreadyAdded={isAlreadyAdded}
+                isClauseVisibleInPreview={isClauseVisibleInPreview}
+              />
+            </aside>
 
-                <button
-                  onClick={() => setRightTab("aparencia")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-all border-b-2 ${
-                    rightTab === "aparencia"
-                      ? "border-accent text-accent"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Palette size={11} /> Aparência
-                </button>
+            <button
+              type="button"
+              aria-label="Redimensionar coluna de clausulas"
+              onMouseDown={handleClauseResizeStart}
+              className="group hidden h-full min-h-[420px] w-5 cursor-col-resize select-none items-center justify-center rounded-2xl border border-transparent bg-transparent md:flex md:order-2"
+              title="Arraste para aumentar ou diminuir a coluna de clausulas"
+            >
+              <span className="flex h-24 w-5 items-center justify-center rounded-full border border-border/70 bg-[#16181d] shadow-[0_10px_25px_rgba(0,0,0,0.35)] transition-all group-hover:border-accent/80 group-hover:bg-[#1b1f26]">
+                <GripVertical size={14} className="text-muted-foreground" />
+              </span>
+            </button>
+
+            <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/5 bg-[linear-gradient(180deg,#15181d_0%,#101215_100%)] shadow-[0_18px_50px_rgba(0,0,0,0.22)] md:order-3">
+              <div className="shrink-0 border-b border-border/40 px-3 py-2.5 lg:px-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Eye size={14} className="text-muted-foreground" />
+                      <span className="text-sm font-semibold text-foreground">Canvas do contrato</span>
+                    </div>
+                    <p className="text-xs leading-5 text-muted-foreground 2xl:max-w-xl">
+                      Preview oficial maior, centralizado e pronto para revisao visual sem apertar o restante do editor.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="border-border/40 bg-background/60 text-muted-foreground">
+                      {autoGenerateResult ? `${legalClauseCount} clausulas do motor juridico` : "Preview pronto para revisao"}
+                    </Badge>
+                    <Button type="button" variant="outline" size="sm" className="border-border/50" onClick={() => void loadPreview("manual")}>
+                      <RotateCcw size={13} className={previewManualRefreshing ? "animate-spin" : ""} />
+                      Atualizar preview
+                    </Button>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-hidden">
-                {rightTab === "clausula" ? (
-                  selectedClause ? (
-                    <ScrollArea className="h-full">
-                      <div className="p-4 space-y-4">
-                        <div>
-                          <p className="text-xs font-semibold text-foreground mb-1">{selectedClause.title}</p>
-                          <span className="text-xs text-muted-foreground/60 border border-border/30 rounded px-1.5 py-0.5 capitalize">
-                            {selectedClause.category}
-                          </span>
-                        </div>
+              <div className="min-h-[420px] bg-[#0b0c0f] p-2.5 sm:p-3 xl:min-h-0 xl:flex-1 xl:p-3">
+                <div
+                  data-tour="preview"
+                  className="relative flex h-full w-full flex-col overflow-hidden rounded-[28px] border border-white/5 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_36%),linear-gradient(180deg,#1d2127_0%,#121419_100%)] p-3 sm:p-4 xl:px-5 xl:py-4"
+                >
+                  <div className="z-10 mx-auto mb-2.5 flex w-fit shrink-0 items-center gap-2 rounded-full border border-border/40 bg-background/85 px-3 py-1.5 text-[11px] text-muted-foreground backdrop-blur">
+                    <Lock size={11} />
+                    Preview oficial
+                  </div>
 
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-muted-foreground font-medium">Conteúdo personalizado</label>
-                          <Textarea
-                            value={editContent}
-                            onChange={(e) => setEditContent(e.target.value)}
-                            rows={12}
-                            className="text-xs bg-background border-border/40 resize-none leading-relaxed min-h-[280px]"
+                  <div ref={previewStageRef} className="min-h-0 flex-1 overflow-hidden">
+                    <div className="mx-auto flex min-h-full w-full items-start justify-center pt-0.5">
+                      <div
+                        className="shrink-0 overflow-visible"
+                        style={{
+                          width: PREVIEW_BASE_WIDTH * previewScale,
+                          height: PREVIEW_BASE_HEIGHT * previewScale,
+                        }}
+                      >
+                        <div
+                          className="overflow-hidden rounded-[22px] border border-black/10 bg-white shadow-[0_32px_90px_rgba(0,0,0,0.48)]"
+                          style={{
+                            width: PREVIEW_BASE_WIDTH,
+                            height: PREVIEW_BASE_HEIGHT,
+                            transform: `scale(${previewScale})`,
+                            transformOrigin: "top left",
+                          }}
+                        >
+                          <iframe
+                            ref={iframeDesktopRef}
+                            srcDoc={previewHtml}
+                            onLoad={handlePreviewFrameLoad}
+                            onError={() => {
+                              void refreshProtectedPreview("asset-error", true);
+                              requestPreviewAssetRetry();
+                            }}
+                            className="h-full w-full border-0"
+                            title="Contract Preview"
+                            sandbox="allow-same-origin"
+                            referrerPolicy="no-referrer"
                           />
                         </div>
-
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <Button onClick={handleSaveClause} disabled={savingClause} className="flex-1 h-9 text-xs">
-                            {savingClause ? (
-                              <><Loader2 size={12} className="animate-spin" /> Salvando…</>
-                            ) : (
-                              <><Save size={12} /> Salvar</>
-                            )}
-                          </Button>
-
-                          <Button
-                            onClick={() => setEditContent(selectedClause.content)}
-                            variant="outline"
-                            className="border-border/50 text-xs h-9"
-                          >
-                            Restaurar
-                          </Button>
-                        </div>
                       </div>
-                    </ScrollArea>
-                  ) : (
-                    <div className="h-full flex items-center justify-center p-6 text-center">
-                      <p className="text-xs text-muted-foreground/50">
-                        Selecione uma cláusula na aba de preview para editar.
+                    </div>
+                  </div>
+
+                  {((previewLoading && !previewLoadedOnce) || (previewManualRefreshing && previewLoadedOnce)) && (
+                    <div
+                      className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-150 ${
+                        previewLoading && !previewLoadedOnce
+                          ? "bg-white/88 backdrop-blur-[1px]"
+                          : "bg-zinc-950/12 backdrop-blur-[1.5px]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 rounded-md border border-border/40 bg-background/80 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                        <Loader2 size={14} className="animate-spin" />
+                        {previewLoading && !previewLoadedOnce ? "Carregando preview oficial..." : "Atualizando preview..."}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </main>
+
+            <aside className="min-h-0 min-w-0 overflow-hidden rounded-2xl border border-border/40 bg-[#111214] md:order-4">
+              <Tabs value={rightTab} onValueChange={(value) => setRightTab(value as RightPanelTab)} className="flex h-full min-h-0 flex-col overflow-hidden">
+                <div className="border-b border-border/40 px-3 py-3 lg:px-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-foreground">Inspector</p>
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        Propriedades do item selecionado e ajustes visuais do documento, no estilo painel lateral de editor.
                       </p>
                     </div>
-                  )
-                ) : (
-                  <AppearancePanel
-                    layout={layout}
-                    onChange={setLayout}
-                    planId={planId}
-                    contractId={contractIdNum}
-                  />
-                )}
-              </div>
-            </section>
-          )}
+                    <TabsList className="grid w-full grid-cols-2 bg-background/80 sm:w-[240px]">
+                      <TabsTrigger value="clausula">Juridico</TabsTrigger>
+                      <TabsTrigger value="aparencia">Aparencia</TabsTrigger>
+                    </TabsList>
+                  </div>
+                </div>
+
+                <AnimatePresence mode="wait">
+                  {rightTab === "clausula" ? (
+                    <motion.div
+                      key="juridico"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className="min-h-0 flex-1 overflow-hidden"
+                    >
+                      <TabsContent value="clausula" className="mt-0 h-full min-h-0 overflow-hidden p-2.5 lg:p-3">
+                        <ContractClauseInspector
+                          selectedClause={selectedClause}
+                          editContent={editContent}
+                          savingClause={savingClause}
+                          autoGenerateResult={autoGenerateResult}
+                          contractInsights={contractInsights}
+                          clauseExplorerTab={clauseExplorerTab}
+                          onEditContentChange={setEditContent}
+                          onSaveClause={() => void handleSaveClause()}
+                          onCloseEditor={() => setSelectedClause(null)}
+                          onOpenLegalContext={() => setLegalContextOpen(true)}
+                        />
+                      </TabsContent>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="aparencia"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className="min-h-0 flex-1 overflow-hidden"
+                    >
+                      <TabsContent value="aparencia" className="mt-0 flex h-full min-h-0 flex-col overflow-hidden">
+                        <div className="border-b border-border/40 px-3 py-3 lg:px-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <SlidersHorizontal size={14} className="text-muted-foreground" />
+                                <p className="text-sm font-semibold text-foreground">Leitura e identidade visual</p>
+                              </div>
+                              <p className="text-xs leading-5 text-muted-foreground">
+                                Ajuste blocos, cores e placeholders para deixar o documento mais claro sem perder o que vem do backend.
+                              </p>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={
+                                layoutSaving === "saving"
+                                  ? "border-accent/30 bg-accent/10 text-accent"
+                                  : layoutSaving === "saved"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                                  : "border-border/40 bg-background/60 text-muted-foreground"
+                              }
+                            >
+                              {layoutSaving === "saving" ? "Salvando alteracoes..." : layoutSaving === "saved" ? "Layout salvo" : "Pronto para editar"}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <div className="min-h-0 flex-1 overflow-hidden">
+                          <ContractLayoutPanel
+                            layout={layout}
+                            onChange={setLayout}
+                            onSavePatch={saveLayoutPatch}
+                            onPreviewRefresh={refreshPreviewAfterMutation}
+                            contractId={contractIdNum}
+                          />
+                        </div>
+                      </TabsContent>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Tabs>
+            </aside>
+          </div>
         </div>
-      </div>
+      )}
+
     </div>
   );
 }

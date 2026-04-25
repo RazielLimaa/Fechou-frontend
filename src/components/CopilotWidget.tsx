@@ -13,6 +13,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/t
 import { Badge } from "./ui/badge";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
+import { normalizeFechouLocale } from "../i18n/locale";
 
 function cn(...inputs: (string | boolean | undefined | null)[]) {
   return inputs.filter(Boolean).join(" ");
@@ -55,12 +57,14 @@ const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
 export function CopilotWidget() {
+  const { i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const locale = normalizeFechouLocale(i18n.resolvedLanguage);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ["copilot-today"],
-    queryFn: () => copilotService.getTodayActions(),
+    queryKey: ["copilot-today", locale],
+    queryFn: () => copilotService.getTodayActions(locale),
     retry: 1,
     staleTime: 30_000,
     refetchOnWindowFocus: false,

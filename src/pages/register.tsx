@@ -2,10 +2,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight, Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { register } from "../service/api/auth";
-import { authStorage } from "../lib/auth-storage";
-import { rateLimiter, isValidEmail, sanitizeInput, isStrongPassword } from "../lib/security";
+import { rateLimiter, isValidEmail, isStrongPassword } from "../lib/security";
+import { consumePostAuthRedirect } from "../lib/navigation-intent";
+import { HoneypotField, isHoneypotTripped } from "../components/security/HoneypotField";
 import { useSession } from "../context/session-context";
+import { LanguageToggle } from "../components/LanguageToggle";
+
+type RegisterCard = { n: string; t: string; d: string; accent: boolean };
 
 // ── canvas: linhas diagonais animadas ────────────────────────────────────────
 function DiagBg() {
@@ -46,6 +51,7 @@ function DiagBg() {
 }
 
 export default function Register() {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
   const { refreshSession } = useSession();
   const [showPwd, setShowPwd] = useState(false);
@@ -56,6 +62,7 @@ export default function Register() {
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [step, setStep] = useState(0); // 0=nome+email, 1=senha
+  const honeypotRef = useRef<HTMLInputElement>(null);
 
   const strength = useMemo(() => {
     if (!pwd) return 0;
@@ -64,23 +71,38 @@ export default function Register() {
   const sColor = ["#ef4444","#f97316","#eab308","#22c55e"][Math.max(0,strength-1)] ?? "#ef4444";
 
   const canNext = name.trim().length >= 2 && isValidEmail(email.trim());
+  const passwordRules = t("auth.register.passwordRules", { returnObjects: true }) as string[];
+  const cards = t("auth.register.cards", { returnObjects: true }) as RegisterCard[];
+  const freeItems = t("auth.register.freeItems", { returnObjects: true }) as string[];
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(null);
+    if (loading) return;
+    if (isHoneypotTripped(honeypotRef)) {
+      setError(t("auth.register.errors.honeypot"));
+      return;
+    }
     const n = name.trim(), em = email.trim().toLowerCase();
-    if (n.length < 2) { setError("Nome deve ter ao menos 2 caracteres."); return; }
-    if (!isValidEmail(em)) { setError("Email inválido."); return; }
+    if (n.length < 2) { setError(t("auth.register.errors.shortName")); return; }
+    if (!isValidEmail(em)) { setError(t("auth.register.errors.invalidEmail")); return; }
     const pc = isStrongPassword(pwd);
-    if (!pc.valid) { setError(pc.message); return; }
+    if (!pc.valid) {
+      if (pwd.length < 8) setError(t("auth.register.errors.weakLength"));
+      else if (!/[A-Z]/.test(pwd)) setError(t("auth.register.errors.weakUpper"));
+      else if (!/[a-z]/.test(pwd)) setError(t("auth.register.errors.weakLower"));
+      else if (!/[0-9]/.test(pwd)) setError(t("auth.register.errors.weakNumber"));
+      else setError(pc.message);
+      return;
+    }
     if (!rateLimiter.check("register", 3, 300000)) {
-      setError(`Aguarde ${Math.ceil(rateLimiter.getRetryAfter("register",300000)/1000)}s.`); return;
+      setError(t("auth.register.errors.tooManyAttempts", { seconds: Math.ceil(rateLimiter.getRetryAfter("register",300000)/1000) })); return;
     }
     setLoading(true);
     try {
-      await register(sanitizeInput(n), sanitizeInput(em), pwd);
+      await register(n, em, pwd);
       await refreshSession();
-      navigate("/propostas");
-    } catch (err: any) { setError(err?.message ?? "Falha ao criar conta."); }
+      navigate(consumePostAuthRedirect("/propostas"));
+    } catch { setError(t("auth.register.errors.generic")); }
     finally { setLoading(false); }
   };
 
@@ -114,11 +136,14 @@ export default function Register() {
               </span>
             </Link>
           </motion.div>
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
-            style={{ fontSize: 12, color: "rgba(255,255,255,0.28)" }}>
-            Já tem conta?{" "}
-            <Link href="/login"><span style={{ color: "#ff6600", cursor: "pointer", fontWeight: 600 }}>Entrar</span></Link>
-          </motion.p>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
+              style={{ fontSize: 12, color: "rgba(255,255,255,0.28)" }}>
+              {t("auth.register.alreadyHaveAccount")}{" "}
+              <Link href="/login"><span style={{ color: "#ff6600", cursor: "pointer", fontWeight: 600 }}>{t("auth.register.signIn")}</span></Link>
+            </motion.p>
+            <LanguageToggle compact />
+          </div>
         </div>
 
         {/* meio: formulário */}
@@ -129,7 +154,7 @@ export default function Register() {
             <div style={{ marginBottom: 32 }}>
               <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}
                 style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "#ff6600", marginBottom: 12 }}>
-                ◈ {step === 0 ? "Passo 1 de 2 · Identidade" : "Passo 2 de 2 · Segurança"}
+                ◈ {step === 0 ? t("auth.register.stepIdentity") : t("auth.register.stepSecurity")}
               </motion.p>
               <AnimatePresence mode="wait">
                 <motion.h2 key={step}
@@ -137,7 +162,7 @@ export default function Register() {
                   exit={{ opacity: 0, x: -16 }}
                   transition={{ duration: 0.3 }}
                   style={{ fontSize: "clamp(26px, 3.5vw, 36px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.95 }}>
-                  {step === 0 ? <>"Quem é<br />você<span style={{ color: "#ff6600" }}>?</span>"</> : <>Proteja sua<br /><span style={{ color: "#ff6600" }}>conta.</span></>}
+                  {step === 0 ? <>{t("auth.register.titleIdentityA")}<br />{t("auth.register.titleIdentityB")}<span style={{ color: "#ff6600" }}>?</span></> : <>{t("auth.register.titleSecurityA")}<br /><span style={{ color: "#ff6600" }}>{t("auth.register.titleSecurityB")}</span></>}
                 </motion.h2>
               </AnimatePresence>
             </div>
@@ -159,7 +184,8 @@ export default function Register() {
               </motion.div>
             )}
 
-            <form onSubmit={step === 0 ? (e) => { e.preventDefault(); if (canNext) setStep(1); } : submit}>
+            <form onSubmit={step === 0 ? (e) => { e.preventDefault(); if (canNext) setStep(1); } : submit} style={{ position: "relative" }}>
+              <HoneypotField inputRef={honeypotRef} />
               <AnimatePresence mode="wait">
 
                 {/* STEP 0 */}
@@ -167,13 +193,13 @@ export default function Register() {
                   <motion.div key="s0" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }}
                     transition={{ duration: 0.3 }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     <div>
-                      <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(255,255,255,0.25)", marginBottom: 7 }}>Nome completo</p>
-                      <input autoFocus type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Seu nome" required
+                      <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(255,255,255,0.25)", marginBottom: 7 }}>{t("auth.register.fullName")}</p>
+                      <input autoFocus type="text" value={name} onChange={e => setName(e.target.value)} placeholder={t("auth.register.namePlaceholder")} required
                         onFocus={() => setFocused("n")} onBlur={() => setFocused(null)} style={iStyle("n")} />
                     </div>
                     <div>
-                      <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(255,255,255,0.25)", marginBottom: 7 }}>Email</p>
-                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required
+                      <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(255,255,255,0.25)", marginBottom: 7 }}>{t("auth.register.email")}</p>
+                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={t("auth.register.emailPlaceholder")} required
                         onFocus={() => setFocused("e")} onBlur={() => setFocused(null)} style={iStyle("e")} />
                     </div>
                     <motion.button type="submit"
@@ -186,7 +212,7 @@ export default function Register() {
                         display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                         transition: "all 0.2s", marginTop: 4,
                       }}>
-                      Continuar <ArrowRight size={14} />
+                      {t("auth.register.continue")} <ArrowRight size={14} />
                     </motion.button>
                   </motion.div>
                 )}
@@ -196,13 +222,14 @@ export default function Register() {
                   <motion.div key="s1" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }}
                     transition={{ duration: 0.3 }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     <div>
-                      <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(255,255,255,0.25)", marginBottom: 7 }}>Senha</p>
+                      <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(255,255,255,0.25)", marginBottom: 7 }}>{t("auth.register.password")}</p>
                       <div style={{ position: "relative" }}>
                         <input autoFocus type={showPwd ? "text" : "password"} value={pwd} onChange={e => setPwd(e.target.value)}
-                          placeholder="Crie uma senha forte" required minLength={6}
+                          placeholder={t("auth.register.passwordPlaceholder")} required minLength={6}
                           onFocus={() => setFocused("p")} onBlur={() => setFocused(null)}
                           style={iStyle("p", 16)} />
                         <button type="button" onClick={() => setShowPwd(v => !v)}
+                          aria-label={showPwd ? t("auth.register.hidePassword") : t("auth.register.showPassword")}
                           style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "rgba(255,255,255,0.28)", cursor: "pointer", padding: 0, display: "flex" }}>
                           {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
                         </button>
@@ -217,10 +244,10 @@ export default function Register() {
                           </div>
                           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                             {[
-                              { t: "8+ chars", ok: pwd.length >= 8 },
-                              { t: "Maiúscula", ok: /[A-Z]/.test(pwd) },
-                              { t: "Número", ok: /[0-9]/.test(pwd) },
-                              { t: "Especial", ok: /[^A-Za-z0-9]/.test(pwd) },
+                              { t: passwordRules[0] ?? "8+ chars", ok: pwd.length >= 8 },
+                              { t: passwordRules[1] ?? "Uppercase", ok: /[A-Z]/.test(pwd) },
+                              { t: passwordRules[2] ?? "Number", ok: /[0-9]/.test(pwd) },
+                              { t: passwordRules[3] ?? "Special", ok: /[^A-Za-z0-9]/.test(pwd) },
                             ].map((r, i) => (
                               <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <Check size={9} style={{ color: r.ok ? "#22c55e" : "rgba(255,255,255,0.15)", transition: "color 0.2s" }} />
@@ -235,7 +262,7 @@ export default function Register() {
                     <div style={{ display: "flex", gap: 10 }}>
                       <button type="button" onClick={() => setStep(0)}
                         style={{ flex: 1, padding: "13px", borderRadius: 12, background: "transparent", border: "1.5px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.35)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s" }}>
-                        ← Voltar
+                        {t("auth.register.back")}
                       </button>
                       <motion.button type="submit" disabled={loading}
                         whileHover={!loading ? { scale: 1.02, boxShadow: "0 0 32px rgba(255,102,0,0.28)" } : {}}
@@ -248,31 +275,13 @@ export default function Register() {
                         }}>
                         {loading
                           ? <div style={{ width: 17, height: 17, border: "2px solid rgba(255,255,255,0.25)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-                          : <><span>Criar conta</span><ArrowRight size={14} /></>}
+                          : <><span>{t("auth.register.submit")}</span><ArrowRight size={14} /></>}
                       </motion.button>
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* social */}
-              <div style={{ marginTop: 24 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                  <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
-                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.18)", textTransform: "uppercase", letterSpacing: "0.1em" }}>ou</span>
-                  <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {["Google", "GitHub"].map(p => (
-                    <motion.button key={p} type="button"
-                      whileHover={{ borderColor: "rgba(255,102,0,0.3)", background: "rgba(255,102,0,0.04)" }}
-                      whileTap={{ scale: 0.97 }}
-                      style={{ padding: "11px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.38)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.18s" }}>
-                      {p}
-                    </motion.button>
-                  ))}
-                </div>
-              </div>
             </form>
           </motion.div>
         </div>
@@ -280,9 +289,10 @@ export default function Register() {
         {/* base: termos */}
         <div style={{ padding: "20px 48px", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
           <p style={{ fontSize: 10, color: "rgba(255,255,255,0.16)", textAlign: "center" }}>
-            Ao criar conta você concorda com os{" "}
-            <span style={{ color: "rgba(255,102,0,0.55)", cursor: "pointer" }}>Termos</span> e{" "}
-            <span style={{ color: "rgba(255,102,0,0.55)", cursor: "pointer" }}>Privacidade</span>
+            {t("auth.register.legalPrefix")}{" "}
+            <span style={{ color: "rgba(255,102,0,0.55)", cursor: "pointer" }}>{t("common.terms")}</span>{" "}
+            {t("auth.register.legalAnd")}{" "}
+            <span style={{ color: "rgba(255,102,0,0.55)", cursor: "pointer" }}>{t("common.privacy")}</span>
           </p>
         </div>
       </div>
@@ -301,24 +311,19 @@ export default function Register() {
           <div style={{ padding: "40px 48px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
               style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "#ff6600", marginBottom: 14 }}>
-              ◈ Por que a Fechou?
+              ◈ {t("auth.register.whyEyebrow")}
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.8 }}>
               <div style={{ fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.93 }}>
-                <span style={{ display: "block" }}>Contratos sérios.</span>
-                <span style={{ display: "block", color: "#ff6600", fontStyle: "italic" }}>Freelancers sérios.</span>
+                <span style={{ display: "block" }}>{t("auth.register.whyTitleA")}</span>
+                <span style={{ display: "block", color: "#ff6600", fontStyle: "italic" }}>{t("auth.register.whyTitleB")}</span>
               </div>
             </motion.div>
           </div>
 
           {/* centro: grade 2×2 de cards */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", gap: 0 }}>
-            {[
-              { n: "01", t: "Validade jurídica",  d: "Assinatura digital com força legal. MP 2.200-2/2001.", accent: false },
-              { n: "02", t: "Sua marca",          d: "Logo, cor e fonte. Parece agência, não template.", accent: true },
-              { n: "03", t: "PIX após assinar",   d: "Libere o pagamento direto. Sem intermediários.", accent: true },
-              { n: "04", t: "Preview ao vivo",    d: "Veja o contrato enquanto edita. Zero surpresas.", accent: false },
-            ].map((card, i) => (
+            {cards.map((card, i) => (
               <motion.div key={i}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -345,16 +350,16 @@ export default function Register() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}
             style={{ padding: "28px 48px", borderTop: "1px solid rgba(255,255,255,0.06)", background: "#ff6600", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.45)", marginBottom: 4 }}>Plano gratuito</p>
-              <p style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", color: "#000", lineHeight: 1 }}>R$ 0 <span style={{ fontSize: 14, fontWeight: 400, color: "rgba(0,0,0,0.45)" }}>para sempre</span></p>
+              <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.45)", marginBottom: 4 }}>{t("auth.register.freePlan")}</p>
+              <p style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", color: "#000", lineHeight: 1 }}>R$ 0 <span style={{ fontSize: 14, fontWeight: 400, color: "rgba(0,0,0,0.45)" }}>{t("auth.register.freeForever")}</span></p>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {["Contratos ilimitados", "Assinatura digital", "PDF profissional"].map(t => (
-                <div key={t} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {freeItems.map(item => (
+                <div key={item} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <div style={{ width: 14, height: 14, borderRadius: "50%", background: "rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <svg width="7" height="7" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#000" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(0,0,0,0.65)" }}>{t}</span>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(0,0,0,0.65)" }}>{item}</span>
                 </div>
               ))}
             </div>

@@ -3,6 +3,8 @@ import { Link, useLocation } from "wouter";
 import { type AuthUser } from "../../service/api/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSession } from "../../context/session-context";
+import { useTranslation } from "react-i18next";
+import { LanguageToggle } from "../LanguageToggle";
 
 type AuthState =
   | { status: "guest"; user: null }
@@ -13,6 +15,7 @@ type AuthState =
 const NAV_H = 58;
 
 export default function Navbar() {
+  const { t } = useTranslation();
   const [location, navigate] = useLocation();
   const [scrolled, setScrolled]       = useState(false);
   const [mobileOpen, setMobileOpen]   = useState(false);
@@ -20,7 +23,7 @@ export default function Navbar() {
   const [isMobile, setIsMobile] = useState<boolean | undefined>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const { status: sessionStatus, user: sessionUser, clearSession } = useSession();
+  const { status: sessionStatus, user: sessionUser, logout } = useSession();
   const [{ status, user }, setAuth] = useState<AuthState>({ status: "loading", user: null });
 
   // scroll listener
@@ -32,7 +35,7 @@ export default function Navbar() {
 
   // mobile detector
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => setIsMobile(window.innerWidth < 1100);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -74,15 +77,15 @@ export default function Navbar() {
     return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
   }, [user]);
 
-  const handleLogout = () => {
-    clearSession();
+  const handleLogout = async () => {
+    await logout();
     setAuth({ status: "guest", user: null });
     navigate("/login");
   };
 
   const NAV_LINKS = [
-    { href: "/vision", label: "Vision" },
-    { href: "/system", label: "Fechado?!" },
+    { href: "/vision", label: t("nav.links.vision") },
+    { href: "/system", label: t("nav.links.system") },
   ];
 
   return (
@@ -94,7 +97,7 @@ export default function Navbar() {
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
         style={{
           position: "fixed", top: 0, left: 0, right: 0, width: "100%", maxWidth: "100vw",
-          zIndex: 100, fontFamily: "'DM Sans','Inter',sans-serif",
+          zIndex: 100, fontFamily: "'DM Sans','Inter',sans-serif", overflowX: "clip",
         }}
       >
         <div style={{
@@ -113,7 +116,7 @@ export default function Navbar() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: isMobile ? "0 14px" : "0 clamp(20px, 4vw, 40px)",
+            padding: isMobile ? "0 14px" : "0 clamp(16px, 3vw, 32px)",
             height: isMobile ? 52 : NAV_H,
             gap: 8,
             boxSizing: "border-box",
@@ -207,6 +210,7 @@ export default function Navbar() {
 
             {/* ── DIREITA: auth + hamburger ─────────────────────────────────── */}
             <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 8, flexShrink: 0 }}>
+              <LanguageToggle compact={isMobile === true} />
 
               {/* GUEST */}
               {status === "guest" && (
@@ -220,7 +224,7 @@ export default function Navbar() {
                       >
                         <motion.span variants={{ rest: { scaleX: 0 }, hover: { scaleX: 1 } }} transition={{ duration: 0.22 }}
                           style={{ position: "absolute", bottom: 2, left: 0, right: 0, height: 1, background: "#ff6600", transformOrigin: "left" }} />
-                        <motion.span variants={{ rest: { color: "rgba(255,255,255,0.38)" }, hover: { color: "#fff" } }}>Entrar</motion.span>
+                        <motion.span variants={{ rest: { color: "rgba(255,255,255,0.38)" }, hover: { color: "#fff" } }}>{t("common.login")}</motion.span>
                       </motion.span>
                     </Link>
                   )}
@@ -244,7 +248,7 @@ export default function Navbar() {
                         whiteSpace: "nowrap",
                         transition: "background 0.2s",
                       }}>
-                      {isMobile ? "Grátis" : "Começar grátis"}
+                      {isMobile ? t("common.free") : t("common.startFree")}
                     </motion.button>
                   </Link>
                 </>
@@ -294,7 +298,7 @@ export default function Navbar() {
                             <p style={{ fontSize: 12, fontWeight: 700, color: "#fff", marginBottom: 2 }}>{user.name}</p>
                             <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</p>
                           </div>
-                          {[{ label: "Dashboard", href: "/propostas" }, { label: "Meu perfil", href: "/profile" }].map(item => (
+                          {[{ label: t("common.dashboard"), href: "/propostas" }, { label: t("common.profile"), href: "/profile" }].map(item => (
                             <Link key={item.href} href={item.href}>
                               <motion.div whileHover={{ background: "rgba(255,102,0,0.07)", paddingLeft: 20 }}
                                 style={{ padding: "11px 16px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.55)", cursor: "pointer", transition: "padding 0.15s" }}>
@@ -305,7 +309,7 @@ export default function Navbar() {
                           <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
                             <motion.button onClick={handleLogout} whileHover={{ background: "rgba(239,68,68,0.07)" }}
                               style={{ width: "100%", padding: "11px 16px", textAlign: "left", background: "none", border: "none", fontSize: 12, fontWeight: 500, color: "rgba(239,68,68,0.65)", cursor: "pointer", fontFamily: "inherit" }}>
-                              Sair
+                              {t("common.logout")}
                             </motion.button>
                           </div>
                         </motion.div>
@@ -319,7 +323,7 @@ export default function Navbar() {
               <motion.button
                 onClick={() => setMobileOpen(v => !v)}
                 whileTap={{ scale: 0.92 }}
-                aria-label={mobileOpen ? "Fechar menu" : "Abrir menu"}
+                aria-label={mobileOpen ? t("nav.closeMenu") : t("nav.openMenu")}
                 style={{
                   width: 34, height: 34, borderRadius: 9, flexShrink: 0,
                   background: mobileOpen ? "rgba(255,102,0,0.12)" : "rgba(255,255,255,0.05)",
@@ -413,14 +417,14 @@ export default function Navbar() {
                     <Link href="/login">
                       <motion.button whileTap={{ scale: 0.97 }}
                         style={{ width: "100%", padding: "13px", borderRadius: 12, background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", cursor: "pointer", fontFamily: "inherit" }}>
-                        Entrar
+                        {t("common.login")}
                       </motion.button>
                     </Link>
                     <Link href="/register">
                       <motion.button whileTap={{ scale: 0.97 }}
                         whileHover={{ boxShadow: "0 0 20px rgba(255,102,0,0.3)" }}
                         style={{ width: "100%", padding: "13px", borderRadius: 12, background: "#ff6600", border: "none", color: "#fff", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", cursor: "pointer", fontFamily: "inherit" }}>
-                        Começar grátis
+                        {t("common.startFree")}
                       </motion.button>
                     </Link>
                   </div>
@@ -440,18 +444,18 @@ export default function Navbar() {
                       <Link href="/propostas">
                         <motion.button whileTap={{ scale: 0.97 }}
                           style={{ width: "100%", padding: "11px 16px", borderRadius: 10, background: "#ff6600", border: "none", color: "#fff", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", cursor: "pointer", fontFamily: "inherit" }}>
-                          Dashboard
+                          {t("common.dashboard")}
                         </motion.button>
                       </Link>
                       <Link href="/profile">
                         <motion.button whileTap={{ scale: 0.97 }}
                           style={{ width: "100%", padding: "11px 16px", borderRadius: 10, background: "transparent", border: "1px solid rgba(255,102,0,0.25)", color: "#ff6600", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", cursor: "pointer", fontFamily: "inherit" }}>
-                          Perfil
+                          {t("common.profile")}
                         </motion.button>
                       </Link>
                       <motion.button onClick={handleLogout} whileTap={{ scale: 0.97 }}
                         style={{ padding: "11px 14px", borderRadius: 10, background: "transparent", border: "1px solid rgba(239,68,68,0.2)", color: "rgba(239,68,68,0.6)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
-                        Sair
+                        {t("common.logout")}
                       </motion.button>
                     </div>
                   </div>
@@ -461,7 +465,7 @@ export default function Navbar() {
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 5px rgba(34,197,94,0.5)" }} />
                   <p style={{ fontSize: 9, color: "rgba(255,255,255,0.18)", textTransform: "uppercase", letterSpacing: "0.18em" }}>
-                    Fechou! · Contratos para freelancers
+                    {t("nav.status")}
                   </p>
                 </div>
               </motion.div>

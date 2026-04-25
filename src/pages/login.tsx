@@ -3,9 +3,13 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight } from "lucide-react";
 import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
+import { useTranslation } from "react-i18next";
 import { login, loginWithGoogle } from "../service/api/auth";
-import { rateLimiter, isValidEmail, sanitizeInput, preventClickjacking } from "../lib/security";
+import { rateLimiter, isValidEmail, preventClickjacking } from "../lib/security";
+import { consumePostAuthRedirect } from "../lib/navigation-intent";
+import { HoneypotField, isHoneypotTripped } from "../components/security/HoneypotField";
 import { useSession } from "../context/session-context";
+import { LanguageToggle } from "../components/LanguageToggle";
 
 const GOOGLE_CLIENT_ID = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "").trim();
 const GOOGLE_AUTH_ENABLED = GOOGLE_CLIENT_ID.length > 0;
@@ -128,17 +132,38 @@ function Field({
 
 // ── Formulário principal ──────────────────────────────────────────────────────
 function LoginForm() {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
-  const { refreshSession } = useSession();
-  const [showPwd, setShowPwd]             = useState(false);
-  const [email, setEmail]                 = useState("");
-  const [pwd, setPwd]                     = useState("");
-  const [loading, setLoading]             = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [error, setError]                 = useState<string | null>(null);
-  const [focused, setFocused]             = useState<string | null>(null);
+  const { refreshSession, status } = useSession();
+  const honeypotRef = useRef<HTMLInputElement>(null);
+  const redirectedRef = useRef(false);
 
-  useEffect(() => { try { preventClickjacking(); } catch {} }, []);
+  const [showPwd, setShowPwd] = useState(false);
+  const [email, setEmail] = useState("");
+  const [pwd, setPwd] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      preventClickjacking();
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      redirectedRef.current = false;
+      return;
+    }
+
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
+
+    const target = consumePostAuthRedirect("/propostas");
+    navigate(target, { replace: true });
+  }, [status, navigate]);
 
   // ── fluxo OAuth moderno: Authorization Code + PKCE ───────────────────────
   // O frontend recebe apenas `code` e o backend faz a troca segura por tokens.
@@ -153,34 +178,39 @@ function LoginForm() {
         const redirectUri = String(import.meta.env.VITE_GOOGLE_REDIRECT_URI ?? "").trim() || `${window.location.origin}/login`;
         await loginWithGoogle(tokenResponse.code, redirectUri);
         await refreshSession();
-        navigate("/propostas");
-      } catch (err: any) {
-        setError(err?.message ?? "Falha ao entrar com Google.");
+        navigate(consumePostAuthRedirect("/propostas"));
+      } catch {
+        setError(t("auth.login.errors.googleGeneric"));
       } finally {
         setGoogleLoading(false);
       }
     },
 
     onError: (err) => {
-      setError("Login com Google cancelado ou falhou. Tente novamente.");
+      setError(t("auth.login.errors.googleFailed"));
     },
   });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(null);
+    if (isAnyLoading) return;
+    if (isHoneypotTripped(honeypotRef)) {
+      setError(t("auth.login.errors.honeypot"));
+      return;
+    }
     const trimEmail = email.trim().toLowerCase();
-    if (!isValidEmail(trimEmail)) { setError("Email inválido."); return; }
-    if (!pwd.length) { setError("Insira sua senha."); return; }
+    if (!isValidEmail(trimEmail)) { setError(t("auth.login.errors.invalidEmail")); return; }
+    if (!pwd.length) { setError(t("auth.login.errors.passwordRequired")); return; }
     if (!rateLimiter.check("login", 5, 120000)) {
-      setError(`Muitas tentativas. Aguarde ${Math.ceil(rateLimiter.getRetryAfter("login", 120000) / 1000)}s.`);
+      setError(t("auth.login.errors.tooManyAttempts", { seconds: Math.ceil(rateLimiter.getRetryAfter("login", 120000) / 1000) }));
       return;
     }
     setLoading(true);
     try {
-      await login(sanitizeInput(trimEmail), pwd);
+      await login(trimEmail, pwd);
       await refreshSession();
-      navigate("/propostas");
-    } catch (err: any) { setError(err?.message ?? "Falha ao entrar."); }
+      navigate(consumePostAuthRedirect("/propostas"));
+    } catch { setError(t("auth.login.errors.generic")); }
     finally { setLoading(false); }
   };
 
@@ -192,6 +222,9 @@ function LoginForm() {
       display: "flex", fontFamily: "'DM Sans','Inter',sans-serif", overflow: "hidden",
     }}>
       <div className="noise-overlay" />
+      <div style={{ position: "absolute", top: 28, right: 28, zIndex: 20 }}>
+        <LanguageToggle compact />
+      </div>
 
       {/* ══ ESQUERDA ══════════════════════════════════════════════════════════ */}
       <div className="hidden lg:flex" style={{
@@ -223,17 +256,17 @@ function LoginForm() {
 
         <div style={{ position: "relative", zIndex: 2, padding: "0 48px 44px" }}>
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.8 }}>
-            <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "#ff6600", marginBottom: 14 }}>◈ Bem-vindo de volta</p>
+            <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "#ff6600", marginBottom: 14 }}>◈ {t("auth.login.welcomeEyebrow")}</p>
             <h1 style={{ fontSize: "clamp(32px, 4vw, 48px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.95, marginBottom: 16 }}>
-              Bom te ver<br /><span style={{ color: "#ff6600", fontStyle: "italic" }}>de volta.</span>
+              {t("auth.login.welcomeTitleA")}<br /><span style={{ color: "#ff6600", fontStyle: "italic" }}>{t("auth.login.welcomeTitleB")}</span>
             </h1>
             <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", lineHeight: 1.7, fontWeight: 300, maxWidth: 300, marginBottom: 28 }}>
-              Continue de onde parou. Seus projetos, propostas e clientes estão te esperando.
+              {t("auth.login.welcomeBody")}
             </p>
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
               style={{ padding: "18px 20px", borderRadius: 16, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", lineHeight: 1.65, fontStyle: "italic", fontWeight: 300, marginBottom: 14 }}>
-                "O Fechou! mudou completamente minha forma de trabalhar. Fecho com muito mais confiança."
+                {t("auth.login.quote")}
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,102,0,0.12)", border: "1px solid rgba(255,102,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -241,7 +274,7 @@ function LoginForm() {
                 </div>
                 <div>
                   <p style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>Rafael Costa</p>
-                  <p style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>UX Designer</p>
+                  <p style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{t("auth.login.quoteRole")}</p>
                 </div>
               </div>
             </motion.div>
@@ -271,15 +304,15 @@ function LoginForm() {
           <div style={{ marginBottom: 32 }}>
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}
               style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.22em", color: "#ff6600", marginBottom: 12 }}>
-              ◈ Acessar conta
+              ◈ {t("auth.login.formEyebrow")}
             </motion.p>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.95, marginBottom: 10 }}>
-              Entrar
+              {t("auth.login.formTitleA")}<br /><span style={{ color: "#ff6600" }}>{t("auth.login.formTitleB")}</span>
             </h2>
             <p style={{ fontSize: 13, color: "rgba(255,255,255,0.32)", fontWeight: 300 }}>
-              Não tem conta?{" "}
+              {t("auth.login.createPrompt")}{" "}
               <Link href="/register">
-                <span style={{ color: "#ff6600", cursor: "pointer", fontWeight: 600 }}>Criar agora →</span>
+                <span style={{ color: "#ff6600", cursor: "pointer", fontWeight: 600 }}>{t("auth.login.createNow")}</span>
               </Link>
             </p>
           </div>
@@ -299,7 +332,7 @@ function LoginForm() {
               type="button"
               onClick={() => GOOGLE_AUTH_ENABLED && googleLogin()}
               disabled={isAnyLoading || !GOOGLE_AUTH_ENABLED}
-              aria-label="Continuar com Google"
+              aria-label={t("auth.login.googleAria")}
               aria-busy={googleLoading}
               whileHover={!isAnyLoading ? { scale: 1.02, borderColor: "rgba(255,102,0,0.35)", background: "rgba(255,102,0,0.05)" } : {}}
               whileTap={!isAnyLoading ? { scale: 0.97 } : {}}
@@ -315,7 +348,7 @@ function LoginForm() {
             >
               {googleLoading
                 ? <div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-                : <><GoogleIcon size={16} /><span>{GOOGLE_AUTH_ENABLED ? "Continuar com Google" : "Google indisponível"}</span></>
+                : <><GoogleIcon size={16} /><span>{GOOGLE_AUTH_ENABLED ? t("auth.login.googleEnabled") : t("auth.login.googleDisabled")}</span></>
               }
             </motion.button>
           </div>
@@ -324,26 +357,27 @@ function LoginForm() {
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
             <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
             <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-              ou entre com email
+              {t("auth.login.separator")}
             </span>
             <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
           </div>
 
-          <form onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <form onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 18, position: "relative" }}>
+            <HoneypotField inputRef={honeypotRef} />
             <Field
-              label="Email" type="email" value={email} onChange={setEmail} placeholder="seu@email.com"
+              label={t("auth.login.email")} type="email" value={email} onChange={setEmail} placeholder={t("auth.login.emailPlaceholder")}
               focused={focused === "email"} onFocus={() => setFocused("email")} onBlur={() => setFocused(null)}
               autoComplete="email"
             />
             <Field
-              label="Senha" type={showPwd ? "text" : "password"} value={pwd} onChange={setPwd} placeholder="Sua senha"
+              label={t("auth.login.password")} type={showPwd ? "text" : "password"} value={pwd} onChange={setPwd} placeholder={t("auth.login.passwordPlaceholder")}
               focused={focused === "pwd"} onFocus={() => setFocused("pwd")} onBlur={() => setFocused(null)}
               autoComplete="current-password"
               right={
                 <button
                   type="button"
                   onClick={() => setShowPwd(v => !v)}
-                  aria-label={showPwd ? "Ocultar senha" : "Mostrar senha"}
+                  aria-label={showPwd ? t("auth.login.hidePassword") : t("auth.login.showPassword")}
                   style={{ background: "none", border: "none", color: "rgba(255,255,255,0.28)", cursor: "pointer", padding: 0, display: "flex" }}>
                   {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
@@ -352,7 +386,7 @@ function LoginForm() {
 
             <div style={{ marginTop: -10, textAlign: "right" }}>
               <Link href="/forgot-password">
-                <span style={{ fontSize: 11, color: "rgba(255,102,0,0.7)", cursor: "pointer" }}>Esqueceu a senha?</span>
+                <span style={{ fontSize: 11, color: "rgba(255,102,0,0.7)", cursor: "pointer" }}>{t("auth.login.forgotPassword")}</span>
               </Link>
             </div>
 
@@ -370,15 +404,16 @@ function LoginForm() {
               }}>
               {loading
                 ? <div style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,0.25)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-                : <><span>Entrar</span><ArrowRight size={16} /></>
+                : <><span>{t("auth.login.submit")}</span><ArrowRight size={16} /></>
               }
             </motion.button>
           </form>
 
           <p style={{ marginTop: 24, fontSize: 10, color: "rgba(255,255,255,0.18)", textAlign: "center", letterSpacing: "0.02em" }}>
-            Ao entrar, você concorda com os{" "}
-            <span style={{ color: "rgba(255,102,0,0.6)", cursor: "pointer" }}>Termos</span> e{" "}
-            <span style={{ color: "rgba(255,102,0,0.6)", cursor: "pointer" }}>Privacidade</span>
+            {t("auth.login.legalPrefix")}{" "}
+            <span style={{ color: "rgba(255,102,0,0.6)", cursor: "pointer" }}>{t("common.terms")}</span>{" "}
+            {t("auth.login.legalAnd")}{" "}
+            <span style={{ color: "rgba(255,102,0,0.6)", cursor: "pointer" }}>{t("common.privacy")}</span>
           </p>
         </motion.div>
       </div>
@@ -393,11 +428,13 @@ function LoginForm() {
 
 // ── Wrapper com GoogleOAuthProvider ───────────────────────────────────────────
 export default function Login() {
+  const { t } = useTranslation();
+
   useEffect(() => {
     if (!GOOGLE_AUTH_ENABLED && import.meta.env.DEV) {
-      console.warn("VITE_GOOGLE_CLIENT_ID não configurado. Login com Google foi desabilitado.");
+      console.warn(t("auth.login.errors.googleNotConfigured"));
     }
-  }, []);
+  }, [t]);
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID || "disabled"}>
