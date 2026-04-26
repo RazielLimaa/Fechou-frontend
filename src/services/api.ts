@@ -4,6 +4,10 @@ type ReqConfig = {
   headers?: Record<string, string>;
   stepUpToken?: string;
   timeoutMs?: number;
+  cache?: RequestCache;
+  authMode?: ApiFetchOptions["authMode"];
+  skipCsrf?: boolean;
+  retry429?: number;
 };
 
 type Resp<T> = { data: T };
@@ -19,6 +23,10 @@ async function request<T>(
     headers: config?.headers,
     stepUpToken: config?.stepUpToken,
     timeoutMs: config?.timeoutMs,
+    cache: config?.cache,
+    authMode: config?.authMode,
+    skipCsrf: config?.skipCsrf,
+    retry429: config?.retry429,
     ...(payload !== undefined ? { json: payload as ApiFetchOptions["json"] } : {}),
   });
 

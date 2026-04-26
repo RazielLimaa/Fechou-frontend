@@ -3,10 +3,10 @@
  *
  * Além do status de pagamento, exibe o modal de avaliação quando:
  *  - status = "success" (pagamento confirmado)
- *  - contractId e userId estão presentes na URL
+ *  - contractId e token público estão presentes na URL
  *
  * URL esperada:
- *   /p/feedback?status=success&contractId=42&userId=7&freelancer=Jo%C3%A3o&signer=Maria
+ *   /p/feedback?status=success&contractId=42&token=<publicToken>&freelancer=Jo%C3%A3o&signer=Maria
  */
 
 import { useState, useEffect } from "react";
@@ -25,7 +25,10 @@ function getParams() {
       ? status as "success" | "failure" | "pending"
       : "pending" as const,
     contractId:    Number(p.get("contractId")) || 0,
-    userId:        Number(p.get("userId"))     || 0,
+    publicToken: (() => {
+      const rawToken = (p.get("token") ?? p.get("publicToken") ?? "").trim();
+      return /^[a-f0-9]{64}$/i.test(rawToken) ? rawToken.toLowerCase() : "";
+    })(),
     freelancerName: decodeURIComponent(p.get("freelancer") ?? ""),
     signerName:     decodeURIComponent(p.get("signer")     ?? "Cliente"),
   };
@@ -62,12 +65,12 @@ const CONFIG = {
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function PaymentFeedback() {
-  const { status, contractId, userId, freelancerName, signerName } = getParams();
+  const { status, contractId, publicToken, freelancerName, signerName } = getParams();
   const cfg = CONFIG[status];
   const { Icon } = cfg;
 
   // Abre o modal de avaliação automaticamente após pagamento confirmado (1.2s)
-  const canRate = status === "success" && contractId > 0 && userId > 0;
+  const canRate = status === "success" && contractId > 0 && publicToken.length === 64;
   const [showRating, setShowRating] = useState(false);
 
   useEffect(() => {
@@ -184,9 +187,9 @@ export default function PaymentFeedback() {
           open={showRating}
           onClose={() => setShowRating(false)}
           contractId={contractId}
-          userId={userId}
           freelancerName={freelancerName || "o freelancer"}
           signerName={signerName}
+          publicToken={publicToken}
         />
       )}
     </div>

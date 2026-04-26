@@ -1,5 +1,23 @@
-import { apiFetch } from "./api";
+import { apiFetch, API_URL } from "./api";
 import { authStorage } from "../lib/auth-storage";
+import { getCsrfToken } from "../lib/csrf";
+import { getSafeHttpErrorMessage } from "../lib/http-error";
+import { normalizeCpfCnpjForSubmit } from "../lib/cpf-cnpj";
+import type { RenderedContractPreview } from "../lib/contract-preview";
+import type {
+  AutoGenerateContractPayload,
+  AutoGenerateContractResponse,
+  LegalBlueprintQueryParams,
+  LegalBlueprintResponse,
+  LegalClauseDefinition,
+} from "../types/legal-contracts";
+import type {
+  ContractScore,
+  DecisionLog,
+  EvidenceProfile,
+  RiskProfile,
+  ValidationIssue,
+} from "../lib/api/types";
 
 export type ContractStatus = "rascunho" | "finalizado" | "assinado" | "cancelado";
 export type PaymentForm = "pix" | "transferencia" | "boleto" | "cartao" | "outro";
@@ -25,12 +43,24 @@ export interface Contract {
   createdAt: string;
   updatedAt?: string;
   clauses?: ContractClause[];
-  layoutConfig?: LayoutConfig;
+  suggestedClauses?: ContractClauseSuggestion[];
+  layout?: ContractLayout | null;
+  layoutConfig?: ContractLayout | null;
   logoUrl?: string;
   lifecycleStatus?: string | null;
   signedAt?: string | null;
   signed?: boolean;
   shareToken?: string | null;
+  validationIssues?: ValidationIssue[];
+  score?: ContractScore | number | null;
+  evidenceProfile?: EvidenceProfile | null;
+  riskProfile?: RiskProfile | null;
+  decisionLogs?: DecisionLog[];
+}
+
+export interface ContractClauseSuggestion {
+  id: string;
+  title: string;
 }
 
 export interface ContractClause {
@@ -45,31 +75,49 @@ export interface ContractClause {
   order?: number;
 }
 
-export interface ClauseTemplate {
-  id: string | number;
-  title: string;
-  category: string;
-  profession?: string;
-  description?: string;
-  content: string;
+export type ClauseTemplate = LegalClauseDefinition;
+
+export type ContractLayoutBlockId =
+  | "hero"
+  | "intro"
+  | "summary"
+  | "scope"
+  | "clauses"
+  | "signatures"
+  | "footer";
+
+export interface ContractPreviewLayoutConfig {
+  includeClauseIds?: string[];
+  hiddenClauseIds?: string[];
 }
 
-export interface LayoutBlock {
-  id: string;
-  type: "logo" | "header" | "info" | "scope" | "clauses" | "divider" | "signatures";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  props?: Record<string, unknown>;
-}
-
-export interface LayoutConfig {
-  blocks: LayoutBlock[];
-  logoPosition?: "top-left" | "top-center" | "top-right";
-  logoSize?: number;
-  headerAlignment?: "left" | "center" | "right";
+export interface ContractAppearanceLayoutConfig {
+  primaryColor?: string;
+  secondaryColor?: string;
+  paperTint?: string;
   fontFamily?: "inter" | "georgia" | "roboto" | "playfair";
+  fontScale?: number;
+  contentWidth?: number;
+  borderRadius?: number;
+  sectionSpacing?: number;
+  showSummaryCards?: boolean;
+  showContractNumber?: boolean;
+  showFechouBranding?: boolean;
+  logoUrl?: string | null;
+}
+
+export interface ContractLayoutBlockConfig {
+  enabled?: boolean;
+  title?: string;
+  content?: string;
+}
+
+export interface ContractLayout {
+  preview?: ContractPreviewLayoutConfig;
+  appearance?: ContractAppearanceLayoutConfig;
+  blocks?: Partial<Record<ContractLayoutBlockId, ContractLayoutBlockConfig>>;
+  customVariables?: Record<string, string>;
+  contractContext?: Record<string, string>;
 }
 
 export interface CreateContractPayload {
@@ -80,9 +128,45 @@ export interface CreateContractPayload {
   value: string;
   paymentForm: PaymentForm;
   scope: string;
+  autoApplySuggestions?: boolean;
+}
+
+export interface CreateContractResponse {
+  contractId: number;
+  suggestedClauses: ContractClauseSuggestion[];
 }
 
 const PREFIX = "/api/contracts";
+const DIRECT_MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function buildApiUrl(path: string): string {
+  const safeBase = API_URL.replace(/\/+$/, "");
+  const safePath = path.startsWith("/") ? path : `/${path}`;
+  return `${safeBase}${safePath}`;
+}
+
+async function buildDirectRequestHeaders(
+  method: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    "X-Requested-With": "XMLHttpRequest",
+    ...extraHeaders,
+  };
+  const token = authStorage.getAccessToken()?.trim();
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }
+
+  if (DIRECT_MUTATION_METHODS.has(method)) {
+    const csrfToken = await getCsrfToken(API_URL);
+    if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  }
+
+  return headers;
+}
 
 export function listContracts(): Promise<Contract[]> {
   return apiFetch<Contract[]>(PREFIX);
@@ -92,8 +176,8 @@ export function getContract(id: number): Promise<Contract> {
   return apiFetch<Contract>(`${PREFIX}/${id}`);
 }
 
-export function createContract(data: CreateContractPayload): Promise<{ contractId: number }> {
-  return apiFetch<{ contractId: number }>(PREFIX, {
+export function createContract(data: CreateContractPayload): Promise<CreateContractResponse> {
+  return apiFetch<CreateContractResponse>(PREFIX, {
     method: "POST",
     json: {
       client_name:    data.clientName,
@@ -103,11 +187,28 @@ export function createContract(data: CreateContractPayload): Promise<{ contractI
       contract_value: data.value,
       payment_method: data.paymentForm,
       service_scope:  data.scope,
+      ...(typeof data.autoApplySuggestions === "boolean"
+        ? { auto_apply_suggestions: data.autoApplySuggestions }
+        : {}),
     },
   });
 }
 
-export function listClauses(params?: {
+export function fetchLegalBlueprint(
+  params?: LegalBlueprintQueryParams,
+): Promise<LegalBlueprintResponse> {
+  const qs = new URLSearchParams();
+  if (params?.audience) qs.set("audience", params.audience);
+  if (params?.riskLevel) qs.set("riskLevel", params.riskLevel);
+  if (params?.contractModels) qs.set("contractModels", params.contractModels);
+  if (params?.personalData) qs.set("personalData", params.personalData);
+  if (params?.sensitiveData) qs.set("sensitiveData", params.sensitiveData);
+  if (params?.sourceCodeDelivery) qs.set("sourceCodeDelivery", params.sourceCodeDelivery);
+  const query = qs.toString();
+  return apiFetch<LegalBlueprintResponse>(`/api/clauses/catalog/blueprint${query ? `?${query}` : ""}`);
+}
+
+export function fetchClauses(params?: {
   search?: string;
   category?: string;
   profession?: string;
@@ -118,6 +219,18 @@ export function listClauses(params?: {
   if (params?.profession) qs.set("profession", params.profession);
   const q = qs.toString();
   return apiFetch<ClauseTemplate[]>(`/api/clauses${q ? `?${q}` : ""}`);
+}
+
+export const listClauses = fetchClauses;
+
+export function autoGenerateContract(
+  contractId: number,
+  payload: AutoGenerateContractPayload,
+): Promise<AutoGenerateContractResponse> {
+  return apiFetch<AutoGenerateContractResponse>(`${PREFIX}/${contractId}/auto-generate`, {
+    method: "POST",
+    json: payload as Record<string, unknown>,
+  });
 }
 
 export function addClause(
@@ -162,51 +275,53 @@ export function reorderClauses(
   });
 }
 
-export function renderContract(contractId: number): Promise<{ html: string }> {
-  return apiFetch<{ html: string }>(`${PREFIX}/render`, {
+export function renderContract(contractId: number): Promise<RenderedContractPreview> {
+  return apiFetch<RenderedContractPreview>(`${PREFIX}/render`, {
     method: "POST",
     json: { contractId },
   });
 }
 
-
-
 export async function uploadLogo(contractId: number, file: File): Promise<{ logoUrl: string }> {
   const formData = new FormData();
   formData.append("logo", file);
-  const token = authStorage.getAccessToken() ?? "";
-  const res = await fetch(`${PREFIX}/${contractId}/logo`, {
+  const headers = await buildDirectRequestHeaders("POST");
+  const res = await fetch(buildApiUrl(`${PREFIX}/${contractId}/logo`), {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
+    headers,
     body: formData,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message || "Erro ao fazer upload da logo");
+    throw new Error(getSafeHttpErrorMessage(res.status, body));
   }
   return res.json();
 }
 
 export async function removeLogo(contractId: number): Promise<void> {
-  const token = authStorage.getAccessToken() ?? "";
-  const res = await fetch(`${PREFIX}/${contractId}/logo`, {
+  const headers = await buildDirectRequestHeaders("DELETE");
+  const res = await fetch(buildApiUrl(`${PREFIX}/${contractId}/logo`), {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
+    headers,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message || "Erro ao remover logo");
+    throw new Error(getSafeHttpErrorMessage(res.status, body));
   }
 }
 
 export async function generatePdf(contractId: number): Promise<void> {
-  const token = authStorage.getAccessToken() ?? "";
-  const res = await fetch(`${PREFIX}/${contractId}/pdf`, {
+  const headers = await buildDirectRequestHeaders("POST", {
+    "Content-Type": "application/json",
+    Accept: "application/pdf,application/octet-stream",
+  });
+  const res = await fetch(buildApiUrl(`${PREFIX}/${contractId}/pdf`), {
     method: "POST",
+    credentials: "include",
     headers: {
-      Authorization: `Bearer ${token}`,
-      "X-Requested-With": "XMLHttpRequest",
-      "Content-Type": "application/json",
+      ...headers,
     },
   });
   if (!res.ok) throw new Error("Erro ao gerar PDF");
@@ -238,9 +353,15 @@ export function markContractPaid(
   data: { note?: string; payerName?: string; payerDocument?: string },
   stepUpToken?: string,
 ): Promise<{ ok: boolean; contractId: number }> {
+  const payload = {
+    ...data,
+    payerDocument: data.payerDocument?.trim()
+      ? normalizeCpfCnpjForSubmit(data.payerDocument, "Documento do pagador")
+      : undefined,
+  };
   return apiFetch(`${PREFIX}/${contractId}/mark-paid`, {
     method: "POST",
-    json: data,
+    json: payload,
     stepUpToken,
   });
 }
@@ -284,22 +405,10 @@ export const STATUS_CONFIG: Record<ContractStatus, { label: string; color: strin
 // ─── update / layoutsave ─────────────────────────────────────────────────────────
 export async function updateLayout(
   contractId: number,
-  layoutConfig: Record<string, unknown>
+  layoutPatch: Record<string, unknown>
 ): Promise<void> {
-  const token = authStorage.getAccessToken() ?? "";
- 
-  const res = await fetch(`/api/contracts/${contractId}/layout`, {
+  await apiFetch<void>(`/api/contracts/${contractId}/layout`, {
     method: "PATCH",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ layout_config: layoutConfig }),
+    json: layoutPatch,
   });
- 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.message ?? "Erro ao salvar layout.");
-  }
 }

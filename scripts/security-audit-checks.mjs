@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 
 const checks = [];
 
@@ -9,6 +9,21 @@ function ok(name, condition, details = '') {
 
 function read(path) {
   return readFileSync(path, 'utf8');
+}
+
+function runRg(args) {
+  const result = spawnSync('rg', args, { encoding: 'utf8' });
+
+  if (result.error) {
+    if (result.error.code === 'ENOENT') return '';
+    throw result.error;
+  }
+
+  if (typeof result.status === 'number' && result.status > 1) {
+    throw new Error(result.stderr || `rg failed with status ${result.status}`);
+  }
+
+  return (result.stdout || '').trim();
 }
 
 const login = read('src/pages/login.tsx');
@@ -47,13 +62,14 @@ ok(
   'signature and signer fields should be validated before submission'
 );
 
-const lsAccessTokenMatches = execSync(
-  "rg -n \"localStorage\\.(getItem|setItem|removeItem)\\(\\\"access_token\\\"|localStorage\\.(getItem|setItem|removeItem)\\('access_token'\" src || true",
-  { encoding: 'utf8' }
-).trim();
+const lsAccessTokenMatches = runRg([
+  '-n',
+  "localStorage\\.(getItem|setItem|removeItem)\\(\\\"access_token\\\"|localStorage\\.(getItem|setItem|removeItem)\\('access_token'",
+  'src',
+]);
 ok('no_access_token_localstorage_calls', lsAccessTokenMatches.length === 0, lsAccessTokenMatches || 'none');
 
-const mergeMarkers = execSync("rg -n \"^<<<<<<<|^=======|^>>>>>>>\" src || true", { encoding: 'utf8' }).trim();
+const mergeMarkers = runRg(['-n', '^<<<<<<<|^=======|^>>>>>>>', 'src']);
 ok('no_merge_conflict_markers', mergeMarkers.length === 0, mergeMarkers || 'none');
 
 let failed = 0;

@@ -1,5 +1,7 @@
 import { authStorage } from "../lib/auth-storage";
 import { clearCsrfToken, getCsrfToken, setCsrfToken } from "../lib/csrf";
+import { getRawHttpErrorMessage, getSafeHttpErrorMessage } from "../lib/http-error";
+import { normalizeCpfCnpjDigits } from "../lib/cpf-cnpj";
 
 const rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 
@@ -34,7 +36,10 @@ export class ApiError extends Error {
   }
 
   get isStepUpRequired(): boolean {
-    return this.status === 403 && (this.code === "STEP_UP_REQUIRED" || /step-up auth required/i.test(this.message));
+    return this.status === 403 && (
+      this.code === "STEP_UP_REQUIRED" ||
+      /step-up auth required|step-up|confirme sua identidade/i.test(this.message)
+    );
   }
 }
 
@@ -44,6 +49,7 @@ export type ApiFetchOptions = RequestInit & {
   stepUpToken?: string;
   timeoutMs?: number;
   skipAuthRefresh?: boolean;
+  authMode?: "required" | "optional";
   skipCsrf?: boolean;
   retry429?: number;
   __internalRetry?: { refreshed?: boolean; csrfRetried?: boolean };
@@ -85,22 +91,14 @@ async function parseResponseBody(res: Response): Promise<unknown> {
 
 function normalizeErrorByCode(code?: string): string | null {
   if (!code) return null;
-  if (code === "STEP_UP_REQUIRED") return "Step-up auth required.";
+  if (code === "STEP_UP_REQUIRED") return "Confirme sua identidade para continuar.";
   if (code === "COOLDOWN_ACTIVE") return "Aguarde alguns instantes antes de tentar novamente.";
   if (code === "SUSPICIOUS_ACTIVITY") return "Atividade incomum detectada. Tente novamente mais tarde.";
   return null;
 }
 
 function getErrorMessage(status: number, payload: unknown): string {
-  const asObject = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
-  const payloadMessage = asObject && typeof asObject.message === "string" ? asObject.message.trim() : "";
-  if (payloadMessage) return payloadMessage;
-
-  if (status === 401) return "Sessão expirada. Faça login novamente.";
-  if (status === 403) return "Você não tem permissão para esta ação.";
-  if (status === 429) return "Muitas tentativas. Aguarde e tente novamente.";
-  if (status >= 500) return "Serviço temporariamente indisponível.";
-  return `Erro HTTP ${status}`;
+  return getSafeHttpErrorMessage(status, payload);
 }
 
 let refreshPromise: Promise<boolean> | null = null;
@@ -152,6 +150,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     stepUpToken,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     skipAuthRefresh = false,
+    authMode = "required",
     skipCsrf = false,
     retry429 = DEFAULT_RATE_LIMIT_RETRIES,
     headers,
@@ -192,9 +191,6 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
 
     const res = response;
     const requestId = res.headers.get("x-request-id") ?? undefined;
-    if (requestId) {
-      console.debug(`[api][${requestId}] ${method} ${path} -> ${response.status}`);
-    }
 
     const nextCsrf = res.headers.get("x-csrf-token");
     if (nextCsrf) setCsrfToken(nextCsrf);
@@ -210,8 +206,14 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     const retryAfter = parseRetryAfter(res.headers.get("retry-after"));
     const normalizedMessage = normalizeErrorByCode(code);
     const message = normalizedMessage ?? getErrorMessage(res.status, payload);
+    const rawMessage = getRawHttpErrorMessage(payload);
 
-    if (res.status === 401 && !skipAuthRefresh && !__internalRetry?.refreshed) {
+    if (
+      res.status === 401 &&
+      authMode === "required" &&
+      !skipAuthRefresh &&
+      !__internalRetry?.refreshed
+    ) {
       const refreshed = await tryRefreshSession();
       if (refreshed) {
         return apiFetch<T>(path, {
@@ -232,7 +234,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     }
 
     if (res.status === 403 && !skipCsrf && !__internalRetry?.csrfRetried) {
-      const isCsrfError = /csrf inválido|csrf invalido|csrf missing|csrf token/i.test(message);
+      const isCsrfError = /csrf inválido|csrf invalido|csrf missing|csrf token/i.test(`${rawMessage} ${message}`);
       if (isCsrfError) {
         clearCsrfToken();
         await getCsrfToken(API_URL);
@@ -318,15 +320,20 @@ export const pixService = {
       pixKeyType: string | null;
     }>("/api/user/pix-key"),
 
-  savePixKey: (pixKey: string, pixKeyType: string, stepUpToken?: string) =>
-    apiFetch<{
+  savePixKey: (pixKey: string, pixKeyType: string, stepUpToken?: string) => {
+    const cleanType = pixKeyType.trim();
+    const cleanKey = cleanType === "cpf" || cleanType === "cnpj"
+      ? normalizeCpfCnpjDigits(pixKey, cleanType.toUpperCase())
+      : pixKey.trim();
+    return apiFetch<{
       pixKey: string;
       pixKeyType: string;
     }>("/api/user/pix-key", {
       method: "POST",
-      json: { pixKey, pixKeyType },
+      json: { pixKey: cleanKey, pixKeyType: cleanType },
       stepUpToken,
-    }),
+    });
+  },
 
   deletePixKey: (stepUpToken?: string) => apiFetch<void>("/api/user/pix-key", { method: "DELETE", stepUpToken }),
 };

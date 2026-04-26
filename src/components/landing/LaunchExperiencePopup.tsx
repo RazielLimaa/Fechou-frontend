@@ -14,6 +14,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type LaunchExperiencePopupProps = {
   open: boolean;
@@ -46,9 +47,6 @@ type LinkStep = BaseStep & {
 
 type PopupStep = ActionStep | LinkStep;
 
-const WHATSAPP_MESSAGE =
-  "Oi! Acabei de testar a FECHOU e quero enviar um feedback ou relatar um bug.";
-
 const AUTO_STEP_MS = 4200;
 
 export default function LaunchExperiencePopup({
@@ -56,6 +54,7 @@ export default function LaunchExperiencePopup({
   onClose,
   whatsappNumber = "5511949507668",
 }: LaunchExperiencePopupProps) {
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>(0);
   const [isPaused, setIsPaused] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -66,11 +65,12 @@ export default function LaunchExperiencePopup({
   useSpring(mouseX, { stiffness: 120, damping: 22, mass: 0.5 });
   useSpring(mouseY, { stiffness: 120, damping: 22, mass: 0.5 });
 
+  const whatsappMessage = t("launchPopup.whatsappMessage");
   const whatsappHref = useMemo(() => {
     return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(
-      WHATSAPP_MESSAGE
+      whatsappMessage
     )}`;
-  }, [whatsappNumber]);
+  }, [whatsappMessage, whatsappNumber]);
 
   useEffect(() => {
     if (!open) {
@@ -110,40 +110,37 @@ export default function LaunchExperiencePopup({
   const steps: PopupStep[] = [
     {
       kind: "action",
-      eyebrow: "Lançamento oficial",
+      eyebrow: t("launchPopup.steps.0.eyebrow"),
       icon: <CheckCircle2 size={20} />,
-      title: "Finalmente a FECHOU está pronta.",
-      description:
-        "Depois de muito refinamento, visão de produto e construção de experiência, a FECHOU agora está no ar para tornar o processo de fechar contratos algo muito mais bonito, rápido e profissional.",
-      badge: "Ao vivo",
+      title: t("launchPopup.steps.0.title"),
+      description: t("launchPopup.steps.0.body"),
+      badge: t("launchPopup.steps.0.badge"),
       accent: "#ff6600",
-      buttonLabel: "Continuar",
+      buttonLabel: t("launchPopup.steps.0.buttonLabel"),
       onAction: () => setStep(1),
       heroGlow: "rgba(255,102,0,0.22)",
     },
     {
       kind: "action",
-      eyebrow: "Nova experiência",
+      eyebrow: t("launchPopup.steps.1.eyebrow"),
       icon: <Sparkles size={20} />,
-      title: "Menos atrito. Mais presença. Mais fechamento.",
-      description:
-        "A proposta da FECHOU não é só funcionar. É fazer você sentir que está usando algo premium, fluido e moderno, com uma estética pensada para transmitir confiança em cada etapa.",
-      badge: "Premium feel",
+      title: t("launchPopup.steps.1.title"),
+      description: t("launchPopup.steps.1.body"),
+      badge: t("launchPopup.steps.1.badge"),
       accent: "#ffffff",
-      buttonLabel: "Próximo",
+      buttonLabel: t("launchPopup.steps.1.buttonLabel"),
       onAction: () => setStep(2),
       heroGlow: "rgba(255,255,255,0.14)",
     },
     {
       kind: "link",
-      eyebrow: "Ajude a evoluir",
+      eyebrow: t("launchPopup.steps.2.eyebrow"),
       icon: <Bug size={20} />,
-      title: "Seu feedback pode elevar a FECHOU ainda mais.",
-      description:
-        "Se você encontrou um bug, teve uma ideia ou quer contar como foi sua experiência, me chama no WhatsApp. Esse retorno agora é o que mais ajuda a lapidar o produto.",
-      badge: "Feedback real",
+      title: t("launchPopup.steps.2.title"),
+      description: t("launchPopup.steps.2.body"),
+      badge: t("launchPopup.steps.2.badge"),
       accent: "#ff6600",
-      buttonLabel: "Enviar no WhatsApp",
+      buttonLabel: t("launchPopup.steps.2.buttonLabel"),
       href: whatsappHref,
       heroGlow: "rgba(255,102,0,0.18)",
     },
@@ -234,7 +231,7 @@ export default function LaunchExperiencePopup({
 
               <button
                 onClick={onClose}
-                aria-label="Fechar popup"
+                aria-label={t("launchPopup.close")}
                 style={{
                   position: "absolute",
                   top: 18,
@@ -476,9 +473,9 @@ export default function LaunchExperiencePopup({
                           flexWrap: "wrap",
                         }}
                       >
-                        <Pill>Premium feel</Pill>
-                        <Pill>FECHOU! Experience</Pill>
-                        <Pill>{step === 2 ? "Feedback aberto" : "Nova fase"}</Pill>
+                        <Pill>{t("launchPopup.premiumFeel")}</Pill>
+                        <Pill>{t("launchPopup.experience")}</Pill>
+                        <Pill>{step === 2 ? t("launchPopup.openFeedback") : t("launchPopup.newPhase")}</Pill>
                       </div>
 
                       <div
@@ -497,7 +494,7 @@ export default function LaunchExperiencePopup({
                             }
                             style={secondaryButtonStyle}
                           >
-                            Voltar
+                            {t("launchPopup.back")}
                           </button>
                         )}
 

@@ -16,6 +16,11 @@ import {
   User, Eye, EyeOff, Copy, RefreshCw, X, ArrowUpRight,
 } from "lucide-react";
 import Navbar from "../components/landing/Navbar";
+import { SafeProfileAvatar } from "../components/profile/SafeProfileAvatar";
+import {
+  sanitizeProfileAvatarSrc,
+  sanitizeProfileExternalUrl,
+} from "../lib/profile-security";
 import {
   getMyProfile, updateMyProfile, fileToDataUrl,
   type UserProfile, type UpdateProfilePayload, type RatingItem,
@@ -159,14 +164,46 @@ export default function Perfil() {
 
   const handleAvatar = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
+    if (!["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"].includes(file.type)) {
+      setError("Formato de imagem inválido. Use PNG, JPG, WEBP ou GIF.");
+      return;
+    }
     if (file.size > 2_000_000) { setError("Máx. 2 MB."); return; }
-    set("avatarUrl", await fileToDataUrl(file));
+    set("avatarUrl", sanitizeProfileAvatarSrc(await fileToDataUrl(file)));
   }, [set]);
 
   const handleSave = async () => {
     setSaving(true); setError(null);
     try {
-      const updated = await updateMyProfile(form);
+      const safePayload: UpdateProfilePayload = {
+        ...form,
+        avatarUrl:
+          form.avatarUrl === undefined
+            ? undefined
+            : sanitizeProfileAvatarSrc(form.avatarUrl),
+        linkWebsite:
+          form.linkWebsite === undefined
+            ? undefined
+            : sanitizeProfileExternalUrl(form.linkWebsite),
+        linkLinkedin:
+          form.linkLinkedin === undefined
+            ? undefined
+            : sanitizeProfileExternalUrl(form.linkLinkedin),
+        linkInstagram:
+          form.linkInstagram === undefined
+            ? undefined
+            : sanitizeProfileExternalUrl(form.linkInstagram),
+        linkGithub:
+          form.linkGithub === undefined
+            ? undefined
+            : sanitizeProfileExternalUrl(form.linkGithub),
+        linkBehance:
+          form.linkBehance === undefined
+            ? undefined
+            : sanitizeProfileExternalUrl(form.linkBehance),
+      };
+
+      const updated = await updateMyProfile(safePayload);
       setProfile(updated); setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err: any) {
@@ -312,10 +349,14 @@ export default function Perfil() {
                 <FieldLabel>Foto</FieldLabel>
                 <div style={{ position: "relative", width: 70, height: 70, marginBottom: 10 }}>
                   <div style={{ width: 70, height: 70, borderRadius: 14, background: "rgba(255,102,0,0.07)", border: `1.5px solid ${levelMeta.color}28`, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {form.avatarUrl
-                      ? <img src={form.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" as const }} />
-                      : <User size={24} color={ORANGE} style={{ opacity: 0.4 }} />
-                    }
+                    <SafeProfileAvatar
+                      src={typeof form.avatarUrl === "string" ? form.avatarUrl : null}
+                      name={form.displayName ?? profile?.name ?? null}
+                      accentColor={ORANGE}
+                      containerStyle={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
+                      imageStyle={{ width: "100%", height: "100%", objectFit: "cover" as const }}
+                      fallback={<User size={24} color={ORANGE} style={{ opacity: 0.4 }} />}
+                    />
                   </div>
                   <button onClick={() => fileRef.current?.click()}
                     style={{ position: "absolute", bottom: -4, right: -4, width: 22, height: 22, borderRadius: "50%", background: ORANGE, border: "2px solid #080808", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>

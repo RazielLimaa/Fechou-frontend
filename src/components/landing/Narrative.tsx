@@ -1,312 +1,438 @@
-import { motion, useScroll, useTransform } from "framer-motion";
-import { useRef, useState, useEffect } from "react";
+"use client";
 
-function useIsMobile() {
-  const [is, setIs] = useState(false);
+import { useEffect, useRef } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useTranslation } from "react-i18next";
+
+gsap.registerPlugin(ScrollTrigger);
+
+const VIDEO_SRC = "/videos/contract-calm.mp4";
+
+export default function SecondOrangeImpactSection() {
+  const { t, i18n } = useTranslation();
+  const sectionRef   = useRef<HTMLElement>(null);
+  const bgRef        = useRef<HTMLDivElement>(null);
+  const mainTextRef  = useRef<HTMLDivElement>(null);
+  const videoWrapRef = useRef<HTMLDivElement>(null);
+  const videoDecorRef = useRef<HTMLDivElement>(null);
+  const ctaRef       = useRef<HTMLDivElement>(null);
+  const ctaTitleRef  = useRef<HTMLParagraphElement>(null);
+  const ctaSubRef    = useRef<HTMLParagraphElement>(null);
+
   useEffect(() => {
-    const c = () => setIs(window.innerWidth < 768);
-    c(); window.addEventListener("resize", c);
-    return () => window.removeEventListener("resize", c);
-  }, []);
-  return is;
-}
+    const ctx = gsap.context(() => {
+      const section   = sectionRef.current;
+      const bg        = bgRef.current;
+      const mainText  = mainTextRef.current;
+      const videoWrap = videoWrapRef.current;
+      const videoDecor = videoDecorRef.current;
+      const cta       = ctaRef.current;
+      if (!section || !bg || !mainText || !videoWrap || !videoDecor || !cta) return;
 
-function R({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+      // ── Estado inicial ──────────────────────────────────────────────────────
+      gsap.set(bg, { backgroundColor: "#050608" });
+
+      // Texto começa off-screen direita — sem opacity/blur, só posição
+      // O scrub vai puxar ele "junto" com o scroll, dando sensação física
+      gsap.set(mainText, {
+        x: () => (window.innerWidth + mainText.scrollWidth) / 2 + Math.max(18, window.innerWidth * 0.02),
+        opacity: 1,
+      });
+
+      // Vídeo começa como círculo pequeno, invisível
+      gsap.set(videoWrap, {
+        opacity: 0,
+        scale: 0.22,
+        transformOrigin: "50% 50%",
+        borderRadius: "9999px",
+        width:  "clamp(140px, 14vw, 180px)",
+        height: "clamp(140px, 14vw, 180px)",
+      });
+      gsap.set(videoDecor, { opacity: 0, scale: 0.96 });
+
+      // CTA invisível
+      gsap.set(cta, { opacity: 0 });
+      if (ctaTitleRef.current) gsap.set(ctaTitleRef.current, { opacity: 0, y: 30 });
+      if (ctaSubRef.current)   gsap.set(ctaSubRef.current,   { opacity: 0, y: 20 });
+
+      // ── Timeline scrubbed ───────────────────────────────────────────────────
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: section,
+          start: "top top",
+          end: "+=4200",
+          pin: true,
+          scrub: 0.7,          // resposta direta: o video aparece com bem menos scroll
+          anticipatePin: 1,
+          invalidateOnRefresh: true,
+        },
+      });
+
+      // ─── FASE 1: preto → laranja (duração longa para cobrir toda entrada do texto)
+      tl.to(bg, {
+        backgroundColor: "#ff6600",
+        duration: 4.1,
+        ease: "none",          // linear — progride igual ao scroll
+      }, 0);
+
+      // ─── FASE 1: texto é PUXADO da direita para a posição final
+      // ease: "none" = o movimento é 1:1 com o scroll, como arrastar fisicamente
+      tl.to(mainText, {
+        x: () => {
+          const textWidth = mainText.scrollWidth;
+          const viewportWidth = window.innerWidth;
+          const sideBreath = Math.max(56, viewportWidth * 0.06);
+          const visualStretchAllowance = textWidth * 0.08;
+          return textWidth > viewportWidth
+            ? Math.min(0, viewportWidth - textWidth - visualStretchAllowance - sideBreath)
+            : 0;
+        },
+        duration: 5.4,
+        ease: "sine.inOut",
+      }, 0);
+
+      // ─── FASE 2: texto para na posição um momento... depois sai pela esquerda
+      // pequena pausa implícita antes de sair
+      tl.to(mainText, {
+        x: () => -(mainText.scrollWidth + window.innerWidth * 0.18),
+        opacity: 0,
+        duration: 1.55,
+        ease: "sine.inOut",
+      }, ">+=0.08");
+
+      // ─── FASE 3: círculo de vídeo aparece depois que o texto saiu
+      tl.to(videoWrap, {
+        opacity: 1,
+        scale: 1,
+        duration: 0.75,
+        ease: "power3.out",
+      }, "<+=0.95");
+
+      tl.to(videoDecor, {
+        opacity: 0.5,
+        scale: 1,
+        duration: 0.65,
+        ease: "power3.out",
+      }, "<");
+
+      // ─── FASE 4: círculo expande para retângulo horizontal com bordas arredondadas
+      // Usa width/height para criar retângulo (aspect ratio ~16:9 reduzido)
+      // borderRadius vai de 9999px → 28px criando o morph orgânico
+      tl.to(videoWrap, {
+        width:        "min(70vw, 780px)",
+        height:       "min(29vw, 315px)",
+        borderRadius: "30px",
+        duration: 2.4,
+        ease: "expo.inOut",
+      }, ">+=0.05");
+
+      // ─── FASE 5: CTA aparece sobre o retângulo de vídeo
+      tl.to(cta, { opacity: 1, duration: 0.01 }, "<+=0.9");
+
+      tl.to(ctaTitleRef.current, {
+        opacity: 1,
+        y: 0,
+        duration: 1.2,
+        ease: "power3.out",
+      }, "<");
+
+      tl.to(ctaSubRef.current, {
+        opacity: 1,
+        y: 0,
+        duration: 1,
+        ease: "power3.out",
+      }, "<+=0.3");
+
+      // pausa final
+      tl.to({}, { duration: 0.9 }, ">");
+
+    }, sectionRef);
+
+    return () => ctx.revert();
+  }, [i18n.language]);
+
   return (
-    <motion.span style={{ display: "block" }}
-      initial={{ opacity: 0, y: 22 }} whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.1 }}
-      transition={{ duration: 0.72, delay, ease: [0.16, 1, 0.3, 1] }}>
-      {children}
-    </motion.span>
-  );
-}
+    <section
+      ref={sectionRef}
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100dvh",
+        overflow: "hidden",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "'DM Sans', 'Inter', sans-serif",
+      }}
+    >
+      {/* ── BG animado ── */}
+      <div
+        ref={bgRef}
+        style={{ position: "absolute", inset: 0, zIndex: 0, willChange: "background-color" }}
+      />
 
-const ITEMS = [
-  { n: "01", title: "Contratos em minutos", body: "Templates para +10 tipos de serviço. Escopo, cláusulas e valores — você preenche, a plataforma formata.", tag: "Criação", icon: "⌨" },
-  { n: "02", title: "Cliente assina pelo link", body: "Envie um link seguro. Seu cliente assina com validade jurídica sem precisar baixar nada.", tag: "Assinatura", icon: "◉" },
-  { n: "03", title: "Receba via PIX direto", body: "Configure sua chave. Libere o pagamento após a assinatura. Sem intermediários.", tag: "Pagamento", icon: "◆" },
-  { n: "04", title: "Sua identidade visual", body: "Logo, cor e fonte personalizados. Seu contrato, sua marca, sua credibilidade.", tag: "Design", icon: "◎" },
-];
+      {/* ── Grain ── */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", opacity: 0.038,
+          backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+          backgroundSize: "180px 180px",
+        }}
+      />
 
-export default function Narrative() {
-  const [active, setActive] = useState<number | null>(null);
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const isMobile = useIsMobile();
-  const imgRef = useRef(null);
-  const { scrollYProgress } = useScroll({ target: imgRef, offset: ["start end", "end start"] });
-  const imgY = useTransform(scrollYProgress, [0, 1], ["-12%", "12%"]);
-  const imgScale = useTransform(scrollYProgress, [0, 0.5, 1], [1.15, 1.05, 1.15]);
+      {/* ── Labels decorativos ── */}
+      <div aria-hidden style={{ position: "absolute", top: "clamp(14px,2.6vw,34px)", left: "clamp(14px,3vw,38px)", zIndex: 5, opacity: 0.16, display: "flex", flexDirection: "column", gap: 4 }}>
+        {[20, 13, 7].map((w, i) => <div key={i} style={{ width: w, height: 1, background: "#fff" }} />)}
+      </div>
+      <div aria-hidden style={{ position: "absolute", top: "clamp(14px,2.6vw,34px)", right: "clamp(14px,3vw,38px)", zIndex: 5, opacity: 0.16, fontSize: 7, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "#fff" }}>
+        {t("narrative.topLabel")}
+      </div>
 
-  // ── MOBILE ─────────────────────────────────────────────────────────────────
-  if (isMobile) {
-    return (
-      <section style={{ background: "#09090b", color: "#fff", fontFamily: "'DM Sans','Inter',sans-serif", overflow: "hidden" }}>
+      {/* ── Vídeo: círculo → retângulo arredondado ── */}
+      <div
+        ref={videoWrapRef}
+        style={{
+          position: "absolute",
+          zIndex: 3,
+          overflow: "hidden",
+          willChange: "transform, opacity, border-radius, width, height",
+          transformOrigin: "50% 50%",
+          backfaceVisibility: "hidden",
+          contain: "layout paint",
+          boxShadow: "none",
+          // posição centralizada via transform (GSAP controla width/height)
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+        }}
+      >
+        <video
+          src={VIDEO_SRC}
+          autoPlay
+          muted
+          loop
+          playsInline
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center",
+            display: "block",
+            transform: "scale(1.12)",
+            transformOrigin: "center",
+          }}
+        />
+        {/* overlay escuro suave */}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.42) 100%)", pointerEvents: "none" }} />
+      </div>
 
-        {/* ── HEADER MOBILE com número decorativo ── */}
-        <div style={{ padding: "52px 20px 36px", position: "relative", overflow: "hidden" }}>
-          {/* número outline gigante de fundo */}
-          <div style={{ position: "absolute", top: -10, right: -10, fontSize: "45vw", fontWeight: 900, letterSpacing: "-0.06em", lineHeight: 1, color: "transparent", WebkitTextStroke: "1px rgba(255,255,255,0.05)", userSelect: "none", pointerEvents: "none" }}>
-            02
-          </div>
-          <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
-            style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.26em", color: "#ff6600", marginBottom: 16, position: "relative" }}>
-            ◈ Por que a Fechou?
-          </motion.p>
-          <div style={{ position: "relative" }}>
-            <h2 style={{ fontSize: "clamp(28px, 8.5vw, 40px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.95, margin: "0 0 18px" }}>
-              <R delay={0}>Pare de negociar</R>
-              <R delay={0.08}>no WhatsApp.</R>
-              <R delay={0.16}><span style={{ color: "rgba(255,255,255,0.22)" }}>Feche com classe.</span></R>
-            </h2>
-            <motion.p initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }}
-              style={{ fontSize: 14, color: "rgba(255,255,255,0.38)", lineHeight: 1.7, fontWeight: 300, maxWidth: 300 }}>
-              Propostas profissionais em segundos, acompanhe suas vendas e receba com segurança.
-            </motion.p>
-          </div>
-          <motion.button initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.45 }}
-            whileTap={{ scale: 0.97 }}
-            style={{ marginTop: 24, padding: "13px 28px", borderRadius: 999, background: "#ff6600", border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", width: "100%", boxShadow: "0 0 24px rgba(255,102,0,0.2)" }}>
-            Criar conta grátis →
-          </motion.button>
+      {/* ── Detalhes brutalistas ao redor do vídeo ── */}
+      <div
+        aria-hidden
+        ref={videoDecorRef}
+        style={{
+          position: "absolute",
+          zIndex: 2,
+          inset: "50%",
+          width: "min(74vw, 840px)",
+          height: "min(33vw, 370px)",
+          transform: "translate(-50%, -50%)",
+          pointerEvents: "none",
+          color: "#050505",
+          opacity: 0,
+          willChange: "transform, opacity",
+        }}
+      >
+        {[
+          { top: 0, left: 0, borderTop: "2px solid currentColor", borderLeft: "2px solid currentColor" },
+          { top: 0, right: 0, borderTop: "2px solid currentColor", borderRight: "2px solid currentColor" },
+          { bottom: 0, left: 0, borderBottom: "2px solid currentColor", borderLeft: "2px solid currentColor" },
+          { bottom: 0, right: 0, borderBottom: "2px solid currentColor", borderRight: "2px solid currentColor" },
+        ].map((style, index) => (
+          <div
+            key={index}
+            style={{
+              position: "absolute",
+              width: "clamp(16px, 2.5vw, 34px)",
+              height: "clamp(16px, 2.5vw, 34px)",
+              ...style,
+            }}
+          />
+        ))}
+
+        <div
+          style={{
+            position: "absolute",
+            top: "clamp(-20px, -1.4vw, -12px)",
+            left: "clamp(16px, 4vw, 54px)",
+            fontSize: "clamp(0.46rem, 0.6vw, 0.58rem)",
+            fontWeight: 900,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+          }}
+        >
+          Evidence / Flow
         </div>
 
-        {/* ── GRID 2×2 de features — cards estilosos ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "rgba(255,255,255,0.06)", margin: "0 0 1px" }}>
-          {ITEMS.map((item, i) => (
-            <motion.div key={i}
-              initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-20px" }}
-              transition={{ duration: 0.5, delay: i * 0.07 }}
-              onClick={() => setExpanded(expanded === i ? null : i)}
+        <div
+          style={{
+            position: "absolute",
+            right: "clamp(16px, 4vw, 54px)",
+            bottom: "clamp(-22px, -1.5vw, -12px)",
+            display: "grid",
+            gridTemplateColumns: "repeat(6, 4px)",
+            gap: 5,
+          }}
+        >
+          {Array.from({ length: 12 }).map((_, index) => (
+            <span
+              key={index}
               style={{
-                background: expanded === i ? "rgba(255,102,0,0.06)" : "#09090b",
-                padding: "20px 16px",
-                cursor: "pointer",
-                position: "relative",
-                overflow: "hidden",
-                transition: "background 0.3s",
-                aspectRatio: "1 / 1",
-                display: "flex", flexDirection: "column", justifyContent: "space-between",
-              }}>
-              {/* linha laranja topo quando ativo */}
-              <motion.div animate={{ scaleX: expanded === i ? 1 : 0 }} transition={{ duration: 0.3 }}
-                style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "#ff6600", transformOrigin: "left" }} />
-
-              {/* número + ícone */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.16em", color: expanded === i ? "#ff6600" : "rgba(255,255,255,0.2)", transition: "color 0.2s" }}>
-                  {item.n}
-                </span>
-                <div style={{
-                  width: 32, height: 32, borderRadius: 9,
-                  background: expanded === i ? "rgba(255,102,0,0.15)" : "rgba(255,255,255,0.05)",
-                  border: `1px solid ${expanded === i ? "rgba(255,102,0,0.3)" : "rgba(255,255,255,0.08)"}`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 14, color: "#ff6600", transition: "all 0.2s",
-                }}>
-                  {item.icon}
-                </div>
-              </div>
-
-              {/* título */}
-              <div>
-                <p style={{ fontSize: 14, fontWeight: 700, color: expanded === i ? "#fff" : "rgba(255,255,255,0.7)", letterSpacing: "-0.02em", lineHeight: 1.2, margin: "12px 0 0", transition: "color 0.2s" }}>
-                  {item.title}
-                </p>
-
-                {/* corpo — expande ao toque */}
-                <motion.div
-                  animate={{ height: expanded === i ? "auto" : 0, opacity: expanded === i ? 1 : 0 }}
-                  transition={{ duration: 0.22 }}
-                  style={{ overflow: "hidden" }}>
-                  <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)", lineHeight: 1.6, fontWeight: 300, marginTop: 8 }}>
-                    {item.body}
-                  </p>
-                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.16em", color: "#ff6600", border: "1px solid rgba(255,102,0,0.3)", borderRadius: 999, padding: "2px 8px", display: "inline-block", marginTop: 8 }}>
-                    {item.tag}
-                  </span>
-                </motion.div>
-              </div>
-
-              {/* + / × */}
-              <motion.span animate={{ rotate: expanded === i ? 45 : 0 }} transition={{ duration: 0.2 }}
-                style={{ position: "absolute", bottom: 14, right: 18, fontSize: 18, color: expanded === i ? "#ff6600" : "rgba(255,255,255,0.15)", lineHeight: 1 }}>
-                +
-              </motion.span>
-            </motion.div>
+                width: 4,
+                height: 4,
+                background: index % 3 === 0 ? "#050505" : "transparent",
+                border: "1px solid currentColor",
+              }}
+            />
           ))}
         </div>
 
-        {/* ── CARD STAT: 5min laranja ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }} transition={{ duration: 0.6 }}
-          style={{ margin: "1px 0 0", background: "#ff6600", padding: "28px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.45)", marginBottom: 8 }}>
-              Tempo médio
-            </p>
-            <p style={{ fontSize: 52, fontWeight: 900, letterSpacing: "-0.05em", lineHeight: 0.85, color: "#000", margin: 0 }}>
-              5<span style={{ fontSize: 24 }}>min</span>
-            </p>
-            <p style={{ fontSize: 12, color: "rgba(0,0,0,0.5)", marginTop: 8 }}>
-              do zero ao contrato enviado
-            </p>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
-            {["R$ 0 para começar", "Sem cartão", "AES-256"].map((t) => (
-              <div key={t} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(0,0,0,0.35)" }} />
-                <p style={{ fontSize: 11, color: "rgba(0,0,0,0.55)", fontWeight: 600, whiteSpace: "nowrap" }}>{t}</p>
-              </div>
-            ))}
-          </div>
-        </motion.div>
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "clamp(-26px, -2vw, -14px)",
+            width: "clamp(16px, 2vw, 28px)",
+            height: 2,
+            background: "currentColor",
+          }}
+        />
 
-        {/* ── FRASE TIPOGRÁFICA + dois cards plano ── */}
-        <div style={{ padding: "44px 20px 0" }}>
-          <div style={{ fontSize: "clamp(24px, 7.5vw, 36px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.95, marginBottom: 28 }}>
-            <R delay={0}>Um contrato bem feito</R>
-            <R delay={0.08}>não é detalhe —</R>
-            <R delay={0.16}>
-              é o que separa{" "}
-              <span style={{ color: "#ff6600", fontStyle: "italic", textDecoration: "underline", textDecorationColor: "rgba(255,102,0,0.3)", textDecorationThickness: 2, textUnderlineOffset: 5 }}>
-                profissionais
-              </span>
-            </R>
-            <R delay={0.22}><span style={{ color: "rgba(255,255,255,0.18)" }}>de amadores.</span></R>
-          </div>
-        </div>
-
-        {/* planos mobile — lado a lado */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 20px 48px" }}>
-          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }}
-            style={{ aspectRatio: "1 / 1", padding: "22px 16px", background: "#ff6600", borderRadius: 16, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.45)" }}>Gratuito</p>
-            <div>
-              <p style={{ fontSize: 30, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color: "#000" }}>R$ 0</p>
-              <p style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginTop: 6, lineHeight: 1.5 }}>Contratos ilimitados. Para sempre.</p>
-            </div>
-            <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.45)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Começar →</p>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.18 }}
-            style={{ aspectRatio: "1 / 1", padding: "22px 16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#ff6600" }}>Pro & Premium</p>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.3 }}>Logo própria e PDF sem marca d'água.</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {["Sua logo", "PDF limpo", "Cor primária"].map((t) => (
-                <span key={t} style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>· {t}</span>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-
-      </section>
-    );
-  }
-
-  // ── DESKTOP (original) ───────────────────────────────────────────────────
-  return (
-    <section style={{ background: "#09090b", color: "#fff", fontFamily: "'DM Sans','Inter',sans-serif", overflow: "hidden" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-        <div style={{ padding: "72px 56px 64px", display: "flex", flexDirection: "column", justifyContent: "space-between", borderRight: "1px solid rgba(255,255,255,0.05)" }}>
-          <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 0.5 }}
-            style={{ fontSize: "clamp(100px, 18vw, 220px)", fontWeight: 900, letterSpacing: "-0.06em", lineHeight: 0.85, color: "transparent", WebkitTextStroke: "1px rgba(255,255,255,0.29)", userSelect: "none", margin: 0 }}>
-            02
-          </motion.p>
-          <div>
-            <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
-              style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.26em", color: "#ff6600", marginBottom: 24 }}>
-              ◈ Por que a Fechou?
-            </motion.p>
-            <h2 style={{ fontSize: "clamp(34px, 4vw, 52px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.95, margin: "0 0 32px" }}>
-              <R delay={0}>Pare de negociar</R>
-              <R delay={0.08}>no WhatsApp.</R>
-              <R delay={0.16}><span style={{ color: "rgba(255,255,255,0.22)" }}>Feche com classe.</span></R>
-            </h2>
-            <motion.p initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, delay: 0.35 }}
-              style={{ fontSize: 15, color: "rgba(255,255,255,0.38)", lineHeight: 1.75, fontWeight: 300, maxWidth: 360 }}>
-              Com a Fechou! você envia propostas profissionais em segundos, acompanha suas vendas e recebe com segurança.
-            </motion.p>
-            <motion.button initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.5 }}
-              whileHover={{ scale: 1.03, background: "#e55a00" }} whileTap={{ scale: 0.97 }}
-              style={{ marginTop: 36, padding: "13px 28px", borderRadius: 999, background: "#ff6600", border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "background 0.2s" }}>
-              Criar conta grátis →
-            </motion.button>
-          </div>
-        </div>
-        <div ref={imgRef} style={{ position: "relative", overflow: "hidden" }}>
-          <motion.img src="./publicpeople.png" alt="Profissional"
-            style={{ width: "100%", height: "100%", objectFit: "cover", y: imgY, scale: imgScale }} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, rgba(9,9,11,0.5) 0%, transparent 40%)" }} />
-        </div>
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            right: "clamp(-26px, -2vw, -14px)",
+            width: "clamp(16px, 2vw, 28px)",
+            height: 2,
+            background: "currentColor",
+          }}
+        />
       </div>
 
-      <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-        {ITEMS.map((item, i) => (
-          <motion.div key={i} initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true, margin: "-40px" }}
-            transition={{ duration: 0.5, delay: i * 0.08 }}
-            onHoverStart={() => setActive(i)} onHoverEnd={() => setActive(null)}
-            style={{ display: "grid", gridTemplateColumns: "72px 1fr auto", alignItems: "center", gap: 0, padding: "32px 64px", borderBottom: "1px solid rgba(255,255,255,0.05)", cursor: "default", position: "relative", overflow: "hidden", transition: "background 0.3s", background: active === i ? "rgba(255,102,0,0.04)" : "transparent" }}>
-            <motion.div animate={{ scaleX: active === i ? 1 : 0 }} transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-              style={{ position: "absolute", inset: 0, background: "rgba(255,102,0,0.03)", transformOrigin: "left", zIndex: 0 }} />
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: active === i ? "#ff6600" : "rgba(255,255,255,0.18)", transition: "color 0.2s", position: "relative", zIndex: 1 }}>{item.n}</p>
-            <div style={{ position: "relative", zIndex: 1 }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
-                <p style={{ fontSize: "clamp(22px, 3vw, 36px)", fontWeight: 300, letterSpacing: "-0.025em", color: active === i ? "#fff" : "rgba(255,255,255,0.6)", transition: "color 0.2s", margin: 0 }}>{item.title}</p>
-                <motion.span animate={{ opacity: active === i ? 1 : 0, x: active === i ? 0 : -8 }} transition={{ duration: 0.2 }}
-                  style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#ff6600", border: "1px solid rgba(255,102,0,0.3)", borderRadius: 999, padding: "2px 10px" }}>
-                  {item.tag}
-                </motion.span>
-              </div>
-              <motion.p animate={{ height: active === i ? "auto" : 0, opacity: active === i ? 1 : 0, marginTop: active === i ? 8 : 0 }} transition={{ duration: 0.25 }}
-                style={{ fontSize: 14, color: "rgba(255,255,255,0.35)", lineHeight: 1.65, overflow: "hidden", fontWeight: 300, maxWidth: 480 }}>
-                {item.body}
-              </motion.p>
-            </div>
-            <motion.div animate={{ opacity: active === i ? 1 : 0, x: active === i ? 0 : 12 }} transition={{ duration: 0.25 }}
-              style={{ position: "relative", zIndex: 1, color: "#ff6600", flexShrink: 0 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="13 6 19 12 13 18" /></svg>
-            </motion.div>
-          </motion.div>
-        ))}
+      {/* ── CTA minimalista sobre o vídeo ── */}
+      <div
+        ref={ctaRef}
+        style={{
+          position: "absolute",
+          zIndex: 4,
+          textAlign: "center",
+          pointerEvents: "none",
+          willChange: "opacity",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "clamp(8px, 1.4vw, 14px)",
+          width: "min(58vw, 640px)",
+          padding: "0 clamp(16px, 4vw, 48px)",
+        }}
+      >
+        {/* Título clean — sem caixa alta, peso leve, elegante */}
+        <p
+          ref={ctaTitleRef}
+          style={{
+            margin: 0,
+            fontSize: "clamp(1.35rem, 3.4vw, 3.45rem)",
+            fontWeight: 300,              // leve — contraste com a fase de entrada pesada
+            letterSpacing: "-0.03em",
+            lineHeight: 1.08,
+            color: "#ffffff",
+            willChange: "transform, opacity",
+            // sem sombra pesada — o texto respira
+            textShadow: "0 2px 32px rgba(0,0,0,0.28)",
+          }}
+        >
+          {t("narrative.ctaTitle")}
+        </p>
+
+        {/* Linha fina separadora */}
+        <div
+          style={{
+            width: "clamp(32px, 4vw, 56px)",
+            height: 1,
+            background: "rgba(255,255,255,0.35)",
+          }}
+        />
+
+        {/* Subtítulo refinado */}
+        <p
+          ref={ctaSubRef}
+          style={{
+            margin: 0,
+            fontSize: "clamp(0.62rem, 1vw, 0.86rem)",
+            fontWeight: 300,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            lineHeight: 1.7,
+            color: "rgba(255,255,255,0.48)",
+            maxWidth: 320,
+            willChange: "transform, opacity",
+          }}
+        >
+          {String(t("narrative.ctaSubtitle")).split("\n").map((line: string, index: number, lines: string[]) => (
+            <span key={line}>
+              {line}
+              {index < lines.length - 1 ? <br /> : null}
+            </span>
+          ))}
+        </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-        <div style={{ padding: "72px 64px", borderRight: "1px solid rgba(255,255,255,0.05)" }}>
-          <div style={{ fontSize: "clamp(32px, 4.5vw, 58px)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 0.95 }}>
-            <R delay={0}>Um contrato bem feito</R>
-            <R delay={0.08}>não é detalhe —</R>
-            <R delay={0.16}>é o que separa{" "}<span style={{ color: "#ff6600", fontStyle: "italic", textDecoration: "underline", textDecorationColor: "rgba(255,102,0,0.3)", textDecorationThickness: 2, textUnderlineOffset: 6 }}>profissionais</span></R>
-            <R delay={0.22}><span style={{ color: "rgba(255,255,255,0.18)" }}>de amadores.</span></R>
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, delay: 0.1 }}
-            style={{ flex: 1, padding: "36px 32px", background: "#ff6600", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(0,0,0,0.45)" }}>Plano gratuito</p>
-            <div>
-              <p style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color: "#000" }}>R$ 0</p>
-              <p style={{ fontSize: 13, color: "rgba(0,0,0,0.5)", marginTop: 8, lineHeight: 1.6 }}>Contratos ilimitados, assinatura digital e PDF profissional — sem pagar nada.</p>
-            </div>
-            <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.45)", textTransform: "uppercase", letterSpacing: "0.12em" }}>Comece agora →</p>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, delay: 0.2 }}
-            style={{ flex: 1, padding: "36px 32px", background: "rgba(255,255,255,0.03)", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "#ff6600" }}>Pro & Premium</p>
-            <div>
-              <p style={{ fontSize: 20, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.2 }}>Logo própria, fontes personalizadas e contratos sem marca d'água.</p>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {["Sua logo", "PDF sem marca", "Cor primária"].map((t) => (
-                <span key={t} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.45)" }}>{t}</span>
-              ))}
-            </div>
-          </motion.div>
-        </div>
+      {/* ── Frase principal — puxada pelo scroll ── */}
+      <div
+        ref={mainTextRef}
+        style={{
+          position: "absolute",
+          zIndex: 5,
+          width: "max-content",
+          maxWidth: "none",
+          padding: "0 clamp(14px, 3vw, 48px)",
+          willChange: "transform",
+          whiteSpace: "nowrap",
+          overflow: "visible",
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            fontFamily: "'Syne', 'Arial Black', 'Impact', sans-serif",
+            fontSize: "clamp(1.7rem, 5.15vw, 9.4rem)",
+            fontWeight: 900,
+            fontStretch: "expanded",
+            fontVariationSettings: "'wdth' 125, 'wght' 900",
+            letterSpacing: 0,
+            lineHeight: 0.82,
+            color: "#000000",
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+            transform: "scaleX(1.08)",
+            transformOrigin: "left center",
+            WebkitFontSmoothing: "antialiased",
+          }}
+        >
+          {t("narrative.mainText")}
+        </p>
       </div>
+
+      {/* ── Número decorativo de fundo ── */}
+      <div aria-hidden style={{ position: "absolute", bottom: "-0.1em", right: "-0.04em", fontSize: "clamp(160px,32vw,400px)", fontWeight: 900, letterSpacing: "-0.06em", lineHeight: 1, color: "transparent", WebkitTextStroke: "1px rgba(255,255,255,0.04)", userSelect: "none", pointerEvents: "none", zIndex: 1 }}>
+        02
+      </div>
+
+      {/* ── Linha decorativa inferior ── */}
+      <div aria-hidden style={{ position: "absolute", bottom: "clamp(18px,3.5vw,42px)", left: "clamp(20px,4vw,56px)", right: "clamp(20px,4vw,56px)", height: "1px", background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.1) 20%,rgba(255,255,255,0.1) 80%,transparent)", zIndex: 5 }} />
     </section>
   );
 }

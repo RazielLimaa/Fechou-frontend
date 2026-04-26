@@ -1,0 +1,145 @@
+import LegalPageLayout from "../components/legal/LegalPageLayout";
+
+export default function PrivacyPage() {
+  return (
+    <LegalPageLayout
+      eyebrow="Política de Privacidade"
+      title="Privacidade com clareza, responsabilidade e respeito."
+      intro="Esta Política de Privacidade explica, de forma objetiva, como a Fechou trata dados pessoais no contexto da criação, gestão, assinatura e acompanhamento de contratos, propostas e fluxos relacionados. Nosso compromisso é tratar informações com seriedade, dentro de finalidades legítimas e compatíveis com a Lei Geral de Proteção de Dados Pessoais (LGPD)."
+      highlight={
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.8, color: "rgba(255,255,255,0.78)" }}>
+          A Fechou busca coletar apenas o que é necessário para viabilizar a experiência da plataforma,
+          proteger operações relevantes e atender obrigações legais, regulatórias e contratuais aplicáveis.
+        </p>
+      }
+      sections={[
+        {
+          title: "Dados que podem ser coletados",
+          body: (
+            <>
+              <p>
+                Podemos tratar dados de cadastro e identificação, como nome, email e informações
+                vinculadas à conta do usuário. Também podemos tratar dados inseridos no uso da
+                plataforma, como informações presentes em contratos, propostas, registros de
+                acompanhamento, dados relacionados à assinatura e outros conteúdos fornecidos pelo
+                próprio usuário no contexto das operações realizadas.
+              </p>
+              <p>
+                Dependendo da utilização da Fechou, também podem ser tratados dados de navegação,
+                registros de acesso, interações com funcionalidades, informações necessárias para
+                proteção da conta, prevenção de uso indevido e manutenção do funcionamento do
+                serviço.
+              </p>
+            </>
+          ),
+        },
+        {
+          title: "Finalidade do tratamento",
+          body: (
+            <>
+              <p>
+                Os dados são tratados para permitir o funcionamento da plataforma, autenticar
+                usuários, viabilizar criação, gestão e assinatura de documentos, organizar fluxos
+                operacionais, prestar suporte, enviar comunicações relacionadas ao serviço, manter
+                a integridade da experiência e adotar medidas de segurança compatíveis com a
+                criticidade das informações tratadas.
+              </p>
+              <p>
+                Também podemos tratar dados para cumprir obrigações legais, regulatórias,
+                contratuais, exercer direitos em processos administrativos, arbitrais ou judiciais,
+                prevenir fraudes, investigar comportamentos incompatíveis com os Termos de Uso e
+                melhorar a estabilidade e a confiabilidade da plataforma.
+              </p>
+            </>
+          ),
+        },
+        {
+          title: "Bases legais aplicáveis",
+          body: (
+            <>
+              <p>
+                O tratamento de dados pessoais pela Fechou ocorre com base em fundamentos previstos
+                na LGPD, conforme a natureza de cada operação. Isso pode incluir, entre outros,
+                execução de contrato ou de procedimentos preliminares relacionados ao serviço,
+                cumprimento de obrigação legal ou regulatória, exercício regular de direitos,
+                legítimo interesse em atividades compatíveis com a operação da plataforma e, quando
+                cabível, consentimento do titular.
+              </p>
+              <p>
+                A base legal aplicável depende do contexto específico em que o dado é tratado.
+              </p>
+            </>
+          ),
+        },
+        {
+          title: "Compartilhamento de dados",
+          body: (
+            <>
+              <p>
+                A Fechou poderá compartilhar dados de forma limitada e responsável quando isso for
+                necessário para viabilizar funcionalidades da plataforma, cumprir obrigações legais,
+                atender solicitações de autoridades competentes, exercer direitos ou apoiar a
+                operação segura e regular do serviço.
+              </p>
+              <p>
+                Esse compartilhamento ocorre dentro de critérios de necessidade, finalidade e
+                adequação, com restrição de acesso compatível com o contexto de uso e com a
+                criticidade dos dados envolvidos.
+              </p>
+            </>
+          ),
+        },
+        {
+          title: "Armazenamento e retenção",
+          body: (
+            <>
+              <p>
+                Os dados são mantidos pelo tempo necessário para cumprir as finalidades descritas
+                nesta Política, respeitar prazos legais, regulatórios e contratuais, preservar a
+                continuidade do serviço e resguardar direitos da Fechou, dos usuários e de terceiros.
+              </p>
+              <p>
+                Sempre que possível e aplicável, dados poderão ser excluídos, anonimizados ou ter o
+                acesso restringido ao término da finalidade ou quando houver solicitação válida do
+                titular, observadas as hipóteses legais de retenção.
+              </p>
+            </>
+          ),
+        },
+        {
+          title: "Direitos do titular",
+          body: (
+            <>
+              <p>
+                Nos termos da LGPD, o titular pode solicitar confirmação de tratamento, acesso,
+                correção de dados incompletos, inexatos ou desatualizados, anonimização, bloqueio ou
+                eliminação quando cabível, portabilidade nos limites legais, informação sobre
+                compartilhamentos e revisão de determinadas decisões quando aplicável.
+              </p>
+              <p>
+                Algumas solicitações podem depender de validação de identidade e estarão sujeitas às
+                hipóteses legais que autorizem a manutenção dos dados.
+              </p>
+            </>
+          ),
+        },
+        {
+          title: "Contato e atualização desta política",
+          body: (
+            <>
+              <p>
+                Dúvidas, solicitações ou pedidos relacionados à privacidade e ao tratamento de dados
+                pessoais podem ser enviados para o canal de contato indicado ao final desta página.
+              </p>
+              <p>
+                Esta Política poderá ser atualizada periodicamente para refletir mudanças na
+                plataforma, em requisitos legais ou em práticas institucionais da Fechou. A versão
+                mais recente será a válida para consulta.
+              </p>
+            </>
+          ),
+        },
+      ]}
+    />
+  );
+}
