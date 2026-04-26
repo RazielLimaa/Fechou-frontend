@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
 
+const DEFAULT_PRODUCTION_API_URL = "https://fechou-backend-g69o.onrender.com";
+
 function normalizeCspSourceList(value: string | undefined): string {
   return String(value ?? "")
     .split(/\s+/)
@@ -28,7 +30,9 @@ function injectCspConnectSrc(extraConnectSrc: string): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const extraConnectSrc = normalizeCspSourceList(
-    env.VITE_CSP_CONNECT_SRC || env.VITE_API_URL,
+    env.VITE_CSP_CONNECT_SRC ||
+      env.VITE_API_URL ||
+      (mode === "production" ? DEFAULT_PRODUCTION_API_URL : ""),
   );
 
   return {

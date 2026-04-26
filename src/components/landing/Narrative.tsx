@@ -21,14 +21,18 @@ export default function SecondOrangeImpactSection() {
   const ctaSubRef    = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+
     const ctx = gsap.context(() => {
-      const section   = sectionRef.current;
       const bg        = bgRef.current;
       const mainText  = mainTextRef.current;
       const videoWrap = videoWrapRef.current;
       const videoDecor = videoDecorRef.current;
       const cta       = ctaRef.current;
-      if (!section || !bg || !mainText || !videoWrap || !videoDecor || !cta) return;
+      const ctaTitle  = ctaTitleRef.current;
+      const ctaSub    = ctaSubRef.current;
+      if (!bg || !mainText || !videoWrap || !videoDecor || !cta || !ctaTitle || !ctaSub) return;
 
       // ── Estado inicial ──────────────────────────────────────────────────────
       gsap.set(bg, { backgroundColor: "#050608" });
@@ -53,8 +57,8 @@ export default function SecondOrangeImpactSection() {
 
       // CTA invisível
       gsap.set(cta, { opacity: 0 });
-      if (ctaTitleRef.current) gsap.set(ctaTitleRef.current, { opacity: 0, y: 30 });
-      if (ctaSubRef.current)   gsap.set(ctaSubRef.current,   { opacity: 0, y: 20 });
+      gsap.set(ctaTitle, { opacity: 0, y: 30 });
+      gsap.set(ctaSub, { opacity: 0, y: 20 });
 
       // ── Timeline scrubbed ───────────────────────────────────────────────────
       const tl = gsap.timeline({
@@ -130,14 +134,14 @@ export default function SecondOrangeImpactSection() {
       // ─── FASE 5: CTA aparece sobre o retângulo de vídeo
       tl.to(cta, { opacity: 1, duration: 0.01 }, "<+=0.9");
 
-      tl.to(ctaTitleRef.current, {
+      tl.to(ctaTitle, {
         opacity: 1,
         y: 0,
         duration: 1.2,
         ease: "power3.out",
       }, "<");
 
-      tl.to(ctaSubRef.current, {
+      tl.to(ctaSub, {
         opacity: 1,
         y: 0,
         duration: 1,
@@ -147,7 +151,7 @@ export default function SecondOrangeImpactSection() {
       // pausa final
       tl.to({}, { duration: 0.9 }, ">");
 
-    }, sectionRef);
+    }, section);
 
     return () => ctx.revert();
   }, [i18n.language]);

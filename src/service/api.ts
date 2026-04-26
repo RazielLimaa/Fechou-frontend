@@ -3,10 +3,15 @@ import { clearCsrfToken, getCsrfToken, setCsrfToken } from "../lib/csrf";
 import { getRawHttpErrorMessage, getSafeHttpErrorMessage } from "../lib/http-error";
 import { normalizeCpfCnpjDigits } from "../lib/cpf-cnpj";
 
+const DEFAULT_PRODUCTION_API_URL = "https://fechou-backend-g69o.onrender.com";
 const rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 
-// Prefer same-origin by default to avoid browser CORS issues in production/reverse-proxy setups.
-export const API_URL = rawApiUrl && rawApiUrl.length > 0 ? rawApiUrl : window.location.origin;
+export const API_URL =
+  rawApiUrl && rawApiUrl.length > 0
+    ? rawApiUrl
+    : import.meta.env.PROD
+      ? DEFAULT_PRODUCTION_API_URL
+      : window.location.origin;
 
 const MUTABLE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const DEFAULT_TIMEOUT_MS = 30_000;
