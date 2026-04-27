@@ -8,96 +8,156 @@ import { useTranslation } from "react-i18next";
 gsap.registerPlugin(ScrollTrigger);
 
 const VIDEO_SRC = "/videos/contract-calm.mp4";
+const FRAME_RADIUS = "24px";
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
+// ─── Dimensões FINAIS do vídeo ───────────────────────────────────────────────
+function getVideoFrame() {
+  if (isMobileViewport()) {
+    return {
+      width: "min(calc(100vw - 24px), 430px)",
+      height: "clamp(430px, 84dvh, 720px)",
+      borderRadius: FRAME_RADIUS,
+    };
+  }
+  return {
+    width: "min(78vw, 1180px)",
+    height: "clamp(300px, 34vw, 500px)",
+    borderRadius: FRAME_RADIUS,
+  };
+}
+
+// ─── Decoração: sempre ligeiramente MAIOR que o vídeo ────────────────────────
+// Mantém uma borda visual ao redor em qualquer viewport.
+const DECOR_PADDING_X = 38; // px extra de cada lado (horizontal)
+const DECOR_PADDING_Y = 32; // px extra de cada lado (vertical)
+
+function getDecorFrame() {
+  if (isMobileViewport()) {
+    // Calcula a partir do vídeo final no mobile
+    const vw = window.innerWidth;
+    const videoW = Math.min(vw - 24, 430);
+    const videoH = Math.min(Math.max(430, window.innerHeight * 0.84), 720);
+    return {
+      width: `${videoW + 34}px`,
+      height: `${videoH + 34}px`,
+    };
+  }
+  const vw = window.innerWidth;
+  const videoW = Math.min(vw * 0.78, 1180);
+  const videoH = Math.min(Math.max(300, vw * 0.34), 500);
+  return {
+    width: `${videoW + DECOR_PADDING_X * 2}px`,
+    height: `${videoH + DECOR_PADDING_Y * 2}px`,
+  };
+}
+
+// ─── Dimensões INICIAIS (círculo) ─────────────────────────────────────────────
+function getInitialCircleSize() {
+  if (isMobileViewport()) return "clamp(120px, 26vw, 160px)";
+  return "clamp(140px, 12vw, 180px)";
+}
 
 export default function SecondOrangeImpactSection() {
   const { t, i18n } = useTranslation();
-  const sectionRef   = useRef<HTMLElement>(null);
-  const bgRef        = useRef<HTMLDivElement>(null);
-  const mainTextRef  = useRef<HTMLDivElement>(null);
-  const videoWrapRef = useRef<HTMLDivElement>(null);
+  const sectionRef    = useRef<HTMLElement>(null);
+  const bgRef         = useRef<HTMLDivElement>(null);
+  const mainTextRef   = useRef<HTMLDivElement>(null);
+  const videoWrapRef  = useRef<HTMLDivElement>(null);
   const videoDecorRef = useRef<HTMLDivElement>(null);
-  const ctaRef       = useRef<HTMLDivElement>(null);
-  const ctaTitleRef  = useRef<HTMLParagraphElement>(null);
-  const ctaSubRef    = useRef<HTMLParagraphElement>(null);
+  const ctaRef        = useRef<HTMLDivElement>(null);
+  const ctaTitleRef   = useRef<HTMLParagraphElement>(null);
+  const ctaSubRef     = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     const section = sectionRef.current;
     if (!section) return;
 
     const ctx = gsap.context(() => {
-      const bg        = bgRef.current;
-      const mainText  = mainTextRef.current;
-      const videoWrap = videoWrapRef.current;
+      const bg         = bgRef.current;
+      const mainText   = mainTextRef.current;
+      const videoWrap  = videoWrapRef.current;
       const videoDecor = videoDecorRef.current;
-      const cta       = ctaRef.current;
-      const ctaTitle  = ctaTitleRef.current;
-      const ctaSub    = ctaSubRef.current;
+      const cta        = ctaRef.current;
+      const ctaTitle   = ctaTitleRef.current;
+      const ctaSub     = ctaSubRef.current;
       if (!bg || !mainText || !videoWrap || !videoDecor || !cta || !ctaTitle || !ctaSub) return;
 
-      // ── Estado inicial ──────────────────────────────────────────────────────
+      // ── Estado inicial ─────────────────────────────────────────────────────
       gsap.set(bg, { backgroundColor: "#050608" });
 
-      // Texto começa off-screen direita — sem opacity/blur, só posição
-      // O scrub vai puxar ele "junto" com o scroll, dando sensação física
       gsap.set(mainText, {
         x: () => (window.innerWidth + mainText.scrollWidth) / 2 + Math.max(18, window.innerWidth * 0.02),
         opacity: 1,
       });
 
-      // Vídeo começa como círculo pequeno, invisível
+      // Círculo inicial — tamanho adaptado ao viewport
+      const initSize = getInitialCircleSize();
       gsap.set(videoWrap, {
         opacity: 0,
-        scale: 0.22,
+        scale: 0.18,
+        xPercent: -50,
+        yPercent: -50,
         transformOrigin: "50% 50%",
         borderRadius: "9999px",
-        width:  "clamp(140px, 14vw, 180px)",
-        height: "clamp(140px, 14vw, 180px)",
+        width: initSize,
+        height: initSize,
       });
-      gsap.set(videoDecor, { opacity: 0, scale: 0.96 });
 
-      // CTA invisível
+      // Decoração inicia invisível com dimensões do círculo
+      gsap.set(videoDecor, {
+        width: initSize,
+        height: initSize,
+        opacity: 0,
+        scale: 0.94,
+        xPercent: -50,
+        yPercent: -50,
+        borderRadius: "9999px",
+      });
+
       gsap.set(cta, { opacity: 0 });
       gsap.set(ctaTitle, { opacity: 0, y: 30 });
       gsap.set(ctaSub, { opacity: 0, y: 20 });
 
-      // ── Timeline scrubbed ───────────────────────────────────────────────────
+      // ── Timeline scrubbed ──────────────────────────────────────────────────
       const tl = gsap.timeline({
         scrollTrigger: {
           trigger: section,
           start: "top top",
           end: "+=4200",
           pin: true,
-          scrub: 0.7,          // resposta direta: o video aparece com bem menos scroll
+          scrub: 0.7,
           anticipatePin: 1,
           invalidateOnRefresh: true,
         },
       });
 
-      // ─── FASE 1: preto → laranja (duração longa para cobrir toda entrada do texto)
+      // FASE 1 — fundo escuro → laranja
       tl.to(bg, {
         backgroundColor: "#ff6600",
         duration: 4.1,
-        ease: "none",          // linear — progride igual ao scroll
+        ease: "none",
       }, 0);
 
-      // ─── FASE 1: texto é PUXADO da direita para a posição final
-      // ease: "none" = o movimento é 1:1 com o scroll, como arrastar fisicamente
+      // FASE 1 — texto entra da direita
       tl.to(mainText, {
         x: () => {
           const textWidth = mainText.scrollWidth;
-          const viewportWidth = window.innerWidth;
-          const sideBreath = Math.max(56, viewportWidth * 0.06);
-          const visualStretchAllowance = textWidth * 0.08;
-          return textWidth > viewportWidth
-            ? Math.min(0, viewportWidth - textWidth - visualStretchAllowance - sideBreath)
+          const vw = window.innerWidth;
+          const sideBreath = Math.max(56, vw * 0.06);
+          const stretch = textWidth * 0.08;
+          return textWidth > vw
+            ? Math.min(0, vw - textWidth - stretch - sideBreath)
             : 0;
         },
         duration: 5.4,
         ease: "sine.inOut",
       }, 0);
 
-      // ─── FASE 2: texto para na posição um momento... depois sai pela esquerda
-      // pequena pausa implícita antes de sair
+      // FASE 2 — texto sai pela esquerda
       tl.to(mainText, {
         x: () => -(mainText.scrollWidth + window.innerWidth * 0.18),
         opacity: 0,
@@ -105,7 +165,7 @@ export default function SecondOrangeImpactSection() {
         ease: "sine.inOut",
       }, ">+=0.08");
 
-      // ─── FASE 3: círculo de vídeo aparece depois que o texto saiu
+      // FASE 3 — círculo aparece
       tl.to(videoWrap, {
         opacity: 1,
         scale: 1,
@@ -114,39 +174,34 @@ export default function SecondOrangeImpactSection() {
       }, "<+=0.95");
 
       tl.to(videoDecor, {
-        opacity: 0.5,
+        opacity: 0.55,
         scale: 1,
         duration: 0.65,
         ease: "power3.out",
       }, "<");
 
-      // ─── FASE 4: círculo expande para retângulo horizontal com bordas arredondadas
-      // Usa width/height para criar retângulo (aspect ratio ~16:9 reduzido)
-      // borderRadius vai de 9999px → 28px criando o morph orgânico
+      // FASE 4 — círculo expande para retângulo (vídeo + decoração em sincronia)
       tl.to(videoWrap, {
-        width:        "min(70vw, 780px)",
-        height:       "min(29vw, 315px)",
-        borderRadius: "30px",
+        width: () => getVideoFrame().width,
+        height: () => getVideoFrame().height,
+        borderRadius: () => getVideoFrame().borderRadius,
         duration: 2.4,
         ease: "expo.inOut",
       }, ">+=0.05");
 
-      // ─── FASE 5: CTA aparece sobre o retângulo de vídeo
+      // Decoração cresce JUNTO com o vídeo, sempre DECOR_PADDING maior
+      tl.to(videoDecor, {
+        width: () => getDecorFrame().width,
+        height: () => getDecorFrame().height,
+        borderRadius: () => getVideoFrame().borderRadius, // acompanha arredondamento
+        duration: 2.4,
+        ease: "expo.inOut",
+      }, "<"); // "<" = ao mesmo tempo
+
+      // FASE 5 — CTA aparece
       tl.to(cta, { opacity: 1, duration: 0.01 }, "<+=0.9");
-
-      tl.to(ctaTitle, {
-        opacity: 1,
-        y: 0,
-        duration: 1.2,
-        ease: "power3.out",
-      }, "<");
-
-      tl.to(ctaSub, {
-        opacity: 1,
-        y: 0,
-        duration: 1,
-        ease: "power3.out",
-      }, "<+=0.3");
+      tl.to(ctaTitle, { opacity: 1, y: 0, duration: 1.2, ease: "power3.out" }, "<");
+      tl.to(ctaSub, { opacity: 1, y: 0, duration: 1, ease: "power3.out" }, "<+=0.3");
 
       // pausa final
       tl.to({}, { duration: 0.9 }, ">");
@@ -170,13 +225,13 @@ export default function SecondOrangeImpactSection() {
         fontFamily: "'DM Sans', 'Inter', sans-serif",
       }}
     >
-      {/* ── BG animado ── */}
+      {/* BG animado */}
       <div
         ref={bgRef}
         style={{ position: "absolute", inset: 0, zIndex: 0, willChange: "background-color" }}
       />
 
-      {/* ── Grain ── */}
+      {/* Grain */}
       <div
         aria-hidden
         style={{
@@ -186,7 +241,7 @@ export default function SecondOrangeImpactSection() {
         }}
       />
 
-      {/* ── Labels decorativos ── */}
+      {/* Labels decorativos */}
       <div aria-hidden style={{ position: "absolute", top: "clamp(14px,2.6vw,34px)", left: "clamp(14px,3vw,38px)", zIndex: 5, opacity: 0.16, display: "flex", flexDirection: "column", gap: 4 }}>
         {[20, 13, 7].map((w, i) => <div key={i} style={{ width: w, height: 1, background: "#fff" }} />)}
       </div>
@@ -194,97 +249,65 @@ export default function SecondOrangeImpactSection() {
         {t("narrative.topLabel")}
       </div>
 
-      {/* ── Vídeo: círculo → retângulo arredondado ── */}
-      <div
-        ref={videoWrapRef}
-        style={{
-          position: "absolute",
-          zIndex: 3,
-          overflow: "hidden",
-          willChange: "transform, opacity, border-radius, width, height",
-          transformOrigin: "50% 50%",
-          backfaceVisibility: "hidden",
-          contain: "layout paint",
-          boxShadow: "none",
-          // posição centralizada via transform (GSAP controla width/height)
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%, -50%)",
-        }}
-      >
-        <video
-          src={VIDEO_SRC}
-          autoPlay
-          muted
-          loop
-          playsInline
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "center",
-            display: "block",
-            transform: "scale(1.12)",
-            transformOrigin: "center",
-          }}
-        />
-        {/* overlay escuro suave */}
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.42) 100%)", pointerEvents: "none" }} />
-      </div>
-
-      {/* ── Detalhes brutalistas ao redor do vídeo ── */}
+      {/* ── Enquadramento decorativo — cresce junto com o vídeo ── */}
       <div
         aria-hidden
         ref={videoDecorRef}
         style={{
           position: "absolute",
           zIndex: 2,
-          inset: "50%",
-          width: "min(74vw, 840px)",
-          height: "min(33vw, 370px)",
-          transform: "translate(-50%, -50%)",
+          left: "50%",
+          top: "50%",
           pointerEvents: "none",
           color: "#050505",
           opacity: 0,
-          willChange: "transform, opacity",
+          willChange: "transform, opacity, width, height, border-radius",
+          // Borda visível ao redor do vídeo
+          border: "1.5px solid rgba(5,5,5,0.55)",
+          borderRadius: FRAME_RADIUS,
+          boxSizing: "border-box",
         }}
       >
+        {/* Cantos brutalistas */}
         {[
-          { top: 0, left: 0, borderTop: "2px solid currentColor", borderLeft: "2px solid currentColor" },
-          { top: 0, right: 0, borderTop: "2px solid currentColor", borderRight: "2px solid currentColor" },
-          { bottom: 0, left: 0, borderBottom: "2px solid currentColor", borderLeft: "2px solid currentColor" },
-          { bottom: 0, right: 0, borderBottom: "2px solid currentColor", borderRight: "2px solid currentColor" },
+          { top: -1, left: -1, borderTop: "2px solid currentColor", borderLeft: "2px solid currentColor" },
+          { top: -1, right: -1, borderTop: "2px solid currentColor", borderRight: "2px solid currentColor" },
+          { bottom: -1, left: -1, borderBottom: "2px solid currentColor", borderLeft: "2px solid currentColor" },
+          { bottom: -1, right: -1, borderBottom: "2px solid currentColor", borderRight: "2px solid currentColor" },
         ].map((style, index) => (
           <div
             key={index}
             style={{
               position: "absolute",
-              width: "clamp(16px, 2.5vw, 34px)",
-              height: "clamp(16px, 2.5vw, 34px)",
+              width: "clamp(14px, 2.2vw, 30px)",
+              height: "clamp(14px, 2.2vw, 30px)",
               ...style,
             }}
           />
         ))}
 
+        {/* Label topo */}
         <div
           style={{
             position: "absolute",
-            top: "clamp(-20px, -1.4vw, -12px)",
-            left: "clamp(16px, 4vw, 54px)",
-            fontSize: "clamp(0.46rem, 0.6vw, 0.58rem)",
+            top: "clamp(10px, 1.5vw, 18px)",
+            left: "clamp(14px, 3.5vw, 48px)",
+            fontSize: "clamp(0.42rem, 0.55vw, 0.56rem)",
             fontWeight: 900,
             letterSpacing: "0.18em",
             textTransform: "uppercase",
+            color: "currentColor",
           }}
         >
           Evidence / Flow
         </div>
 
+        {/* Grid de pontos — baixo direito */}
         <div
           style={{
             position: "absolute",
-            right: "clamp(16px, 4vw, 54px)",
-            bottom: "clamp(-22px, -1.5vw, -12px)",
+            right: "clamp(14px, 3.5vw, 48px)",
+            bottom: "clamp(10px, 1.5vw, 18px)",
             display: "grid",
             gridTemplateColumns: "repeat(6, 4px)",
             gap: 5,
@@ -303,30 +326,70 @@ export default function SecondOrangeImpactSection() {
           ))}
         </div>
 
+        {/* Linhas laterais */}
         <div
           style={{
             position: "absolute",
             top: "50%",
-            left: "clamp(-26px, -2vw, -14px)",
-            width: "clamp(16px, 2vw, 28px)",
+            left: "clamp(-28px, -2.2vw, -16px)",
+            width: "clamp(14px, 1.8vw, 24px)",
             height: 2,
+            transform: "translateY(-50%)",
             background: "currentColor",
           }}
         />
-
         <div
           style={{
             position: "absolute",
             top: "50%",
-            right: "clamp(-26px, -2vw, -14px)",
-            width: "clamp(16px, 2vw, 28px)",
+            right: "clamp(-28px, -2.2vw, -16px)",
+            width: "clamp(14px, 1.8vw, 24px)",
             height: 2,
+            transform: "translateY(-50%)",
             background: "currentColor",
           }}
         />
       </div>
 
-      {/* ── CTA minimalista sobre o vídeo ── */}
+      {/* ── Vídeo: círculo → retângulo ── */}
+      <div
+        ref={videoWrapRef}
+        style={{
+          position: "absolute",
+          zIndex: 3,
+          overflow: "hidden",
+          willChange: "transform, opacity, border-radius, width, height",
+          transformOrigin: "50% 50%",
+          backfaceVisibility: "hidden",
+          contain: "layout paint",
+          left: "50%",
+          top: "50%",
+        }}
+      >
+        <video
+          src={VIDEO_SRC}
+          autoPlay
+          muted
+          loop
+          playsInline
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center",
+            display: "block",
+            transform: "translateZ(0)",
+          }}
+        />
+        {/* Overlay escuro suave */}
+        <div style={{
+          position: "absolute", inset: 0,
+          background: "linear-gradient(180deg, rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.44) 100%)",
+          pointerEvents: "none",
+        }} />
+      </div>
+
+      {/* ── CTA sobre o vídeo ── */}
       <div
         ref={ctaRef}
         style={{
@@ -339,43 +402,33 @@ export default function SecondOrangeImpactSection() {
           flexDirection: "column",
           alignItems: "center",
           gap: "clamp(8px, 1.4vw, 14px)",
-          width: "min(58vw, 640px)",
+          width: "min(68vw, 640px)",
           padding: "0 clamp(16px, 4vw, 48px)",
         }}
       >
-        {/* Título clean — sem caixa alta, peso leve, elegante */}
         <p
           ref={ctaTitleRef}
           style={{
             margin: 0,
-            fontSize: "clamp(1.35rem, 3.4vw, 3.45rem)",
-            fontWeight: 300,              // leve — contraste com a fase de entrada pesada
+            fontSize: "clamp(1.2rem, 3.2vw, 3.45rem)",
+            fontWeight: 300,
             letterSpacing: "-0.03em",
             lineHeight: 1.08,
             color: "#ffffff",
             willChange: "transform, opacity",
-            // sem sombra pesada — o texto respira
             textShadow: "0 2px 32px rgba(0,0,0,0.28)",
           }}
         >
           {t("narrative.ctaTitle")}
         </p>
 
-        {/* Linha fina separadora */}
-        <div
-          style={{
-            width: "clamp(32px, 4vw, 56px)",
-            height: 1,
-            background: "rgba(255,255,255,0.35)",
-          }}
-        />
+        <div style={{ width: "clamp(28px, 3.5vw, 48px)", height: 1, background: "rgba(255,255,255,0.32)" }} />
 
-        {/* Subtítulo refinado */}
         <p
           ref={ctaSubRef}
           style={{
             margin: 0,
-            fontSize: "clamp(0.62rem, 1vw, 0.86rem)",
+            fontSize: "clamp(0.58rem, 0.95vw, 0.84rem)",
             fontWeight: 300,
             letterSpacing: "0.12em",
             textTransform: "uppercase",
@@ -394,7 +447,7 @@ export default function SecondOrangeImpactSection() {
         </p>
       </div>
 
-      {/* ── Frase principal — puxada pelo scroll ── */}
+      {/* ── Texto principal — puxado pelo scroll ── */}
       <div
         ref={mainTextRef}
         style={{
@@ -430,13 +483,24 @@ export default function SecondOrangeImpactSection() {
         </p>
       </div>
 
-      {/* ── Número decorativo de fundo ── */}
-      <div aria-hidden style={{ position: "absolute", bottom: "-0.1em", right: "-0.04em", fontSize: "clamp(160px,32vw,400px)", fontWeight: 900, letterSpacing: "-0.06em", lineHeight: 1, color: "transparent", WebkitTextStroke: "1px rgba(255,255,255,0.04)", userSelect: "none", pointerEvents: "none", zIndex: 1 }}>
+      {/* Número decorativo de fundo */}
+      <div aria-hidden style={{
+        position: "absolute", bottom: "-0.1em", right: "-0.04em",
+        fontSize: "clamp(160px,32vw,400px)", fontWeight: 900, letterSpacing: "-0.06em", lineHeight: 1,
+        color: "transparent", WebkitTextStroke: "1px rgba(255,255,255,0.04)",
+        userSelect: "none", pointerEvents: "none", zIndex: 1,
+      }}>
         02
       </div>
 
-      {/* ── Linha decorativa inferior ── */}
-      <div aria-hidden style={{ position: "absolute", bottom: "clamp(18px,3.5vw,42px)", left: "clamp(20px,4vw,56px)", right: "clamp(20px,4vw,56px)", height: "1px", background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.1) 20%,rgba(255,255,255,0.1) 80%,transparent)", zIndex: 5 }} />
+      {/* Linha decorativa inferior */}
+      <div aria-hidden style={{
+        position: "absolute", bottom: "clamp(18px,3.5vw,42px)",
+        left: "clamp(20px,4vw,56px)", right: "clamp(20px,4vw,56px)",
+        height: "1px",
+        background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.1) 20%,rgba(255,255,255,0.1) 80%,transparent)",
+        zIndex: 5,
+      }} />
     </section>
   );
 }

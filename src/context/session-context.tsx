@@ -2,10 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import {
   getCsrf,
   login,
-  loginWithGoogle,
   logout,
   me,
-  refresh,
   register,
   type AuthUser,
 } from "../service/api/auth";
@@ -19,7 +17,6 @@ type SessionContextType = {
   clearSession: () => void;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  loginWithGoogle: (code: string, redirectUri?: string) => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
   getCsrf: () => Promise<void>;
@@ -48,13 +45,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         applyAuthenticated(currentUser);
         return;
       }
-
-      const refreshed = await refresh();
-      if (refreshed?.user) {
-        applyAuthenticated(refreshed.user);
-        return;
-      }
-
       clearSession();
     } catch {
       clearSession();
@@ -62,29 +52,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [applyAuthenticated, clearSession]);
 
   const loginAction = useCallback(async (email: string, password: string) => {
-    const response = await login(email, password);
-    applyAuthenticated(response.user);
-  }, [applyAuthenticated]);
+    await login(email, password);
+    await refreshSession();
+  }, [refreshSession]);
 
   const registerAction = useCallback(async (name: string, email: string, password: string) => {
     const response = await register(name, email, password);
     applyAuthenticated(response.user);
   }, [applyAuthenticated]);
-
-  const googleAction = useCallback(async (code: string, redirectUri?: string) => {
-    const response = await loginWithGoogle(code, redirectUri);
-    applyAuthenticated(response.user);
-  }, [applyAuthenticated]);
-
-  const refreshAction = useCallback(async () => {
-    const response = await refresh();
-    if (response?.user) {
-      applyAuthenticated(response.user);
-      return;
-    }
-
-    clearSession();
-  }, [applyAuthenticated, clearSession]);
 
   const logoutAction = useCallback(async () => {
     try {
@@ -110,12 +85,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       clearSession,
       login: loginAction,
       register: registerAction,
-      loginWithGoogle: googleAction,
-      refresh: refreshAction,
+      refresh: refreshSession,
       logout: logoutAction,
       getCsrf: csrfAction,
     }),
-    [status, user, refreshSession, clearSession, loginAction, registerAction, googleAction, refreshAction, logoutAction, csrfAction],
+    [status, user, refreshSession, clearSession, loginAction, registerAction, logoutAction, csrfAction],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

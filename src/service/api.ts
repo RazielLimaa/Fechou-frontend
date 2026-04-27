@@ -1,21 +1,30 @@
-import { authStorage } from "../lib/auth-storage";
+import axios, { AxiosError, type AxiosRequestConfig } from "axios";
 import { clearCsrfToken, getCsrfToken, setCsrfToken } from "../lib/csrf";
 import { getRawHttpErrorMessage, getSafeHttpErrorMessage } from "../lib/http-error";
 import { normalizeCpfCnpjDigits } from "../lib/cpf-cnpj";
 
-const DEFAULT_PRODUCTION_API_URL = "https://fechou-backend-g69o.onrender.com";
+const DEFAULT_API_URL = "https://fechou-backend-g69o.onrender.com";
 const rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 
 export const API_URL =
   rawApiUrl && rawApiUrl.length > 0
     ? rawApiUrl
-    : import.meta.env.PROD
-      ? DEFAULT_PRODUCTION_API_URL
-      : window.location.origin;
+    : DEFAULT_API_URL;
+
+export const api = axios.create({
+  baseURL: API_URL,
+  withCredentials: true,
+  timeout: 30_000,
+  headers: {
+    Accept: "application/json",
+    "X-Requested-With": "XMLHttpRequest",
+  },
+});
 
 const MUTABLE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RATE_LIMIT_RETRIES = 1;
+const AUTH_REFRESH_PATH = "/api/auth/refresh";
 
 type JsonBody = Record<string, unknown> | Array<unknown> | string | number | boolean | null;
 
@@ -48,9 +57,16 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiFetchOptions = RequestInit & {
+export type ApiFetchOptions = Omit<
+  AxiosRequestConfig,
+  "baseURL" | "data" | "headers" | "method" | "timeout" | "url" | "withCredentials"
+> & {
+  method?: string;
+  headers?: HeadersInit;
+  cache?: RequestCache;
+  credentials?: RequestCredentials;
   json?: JsonBody;
-  token?: string;
+  body?: BodyInit | null;
   stepUpToken?: string;
   timeoutMs?: number;
   skipAuthRefresh?: boolean;
@@ -64,6 +80,33 @@ function joinUrl(base: string, path: string): string {
   const safeBase = base.replace(/\/+$/, "");
   const safePath = path.startsWith("/") ? path : `/${path}`;
   return `${safeBase}${safePath}`;
+}
+
+function normalizeApiPath(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    const target = new URL(path);
+    const base = new URL(API_URL);
+    if (target.origin !== base.origin) {
+      throw new Error("Endpoint externo bloqueado pelo cliente seguro da API.");
+    }
+
+    return `${target.pathname}${target.search}${target.hash}`;
+  }
+
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function headersToRecord(headers?: HeadersInit): Record<string, string> {
+  if (!headers) return {};
+  if (headers instanceof Headers) return Object.fromEntries(headers.entries());
+  if (Array.isArray(headers)) return Object.fromEntries(headers);
+  return headers;
+}
+
+function getResponseHeader(headers: Record<string, unknown>, name: string): string | null {
+  const lowerName = name.toLowerCase();
+  const value = Object.entries(headers).find(([key]) => key.toLowerCase() === lowerName)?.[1];
+  return typeof value === "string" ? value : null;
 }
 
 function sanitizeHeaderToken(token: string): string | null {
@@ -106,52 +149,31 @@ function getErrorMessage(status: number, payload: unknown): string {
   return getSafeHttpErrorMessage(status, payload);
 }
 
-let refreshPromise: Promise<boolean> | null = null;
+async function refreshAuthSession(timeoutMs: number): Promise<boolean> {
+  try {
+    const csrf = await getCsrfToken(API_URL);
+    const response = await api.request({
+      url: AUTH_REFRESH_PATH,
+      method: "POST",
+      timeout: timeoutMs,
+      validateStatus: () => true,
+      headers: {
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      },
+    });
 
-async function tryRefreshSession(): Promise<boolean> {
-  if (refreshPromise) return refreshPromise;
+    const nextCsrf = getResponseHeader(response.headers, "x-csrf-token");
+    if (nextCsrf) setCsrfToken(nextCsrf);
 
-  refreshPromise = (async () => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-
-    try {
-      const res = await fetch(joinUrl(API_URL, "/api/auth/refresh"), {
-        method: "POST",
-        credentials: "include",
-        signal: controller.signal,
-        headers: {
-          Accept: "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      });
-
-      const nextCsrf = res.headers.get("x-csrf-token");
-      if (nextCsrf) setCsrfToken(nextCsrf);
-
-      if (!res.ok) return false;
-
-      const payload = await parseResponseBody(res);
-      const data = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
-      const token = data && typeof data.token === "string" ? sanitizeHeaderToken(data.token) : null;
-      if (token) authStorage.setAccessToken(token);
-
-      return true;
-    } catch {
-      return false;
-    } finally {
-      clearTimeout(timeout);
-      refreshPromise = null;
-    }
-  })();
-
-  return refreshPromise;
+    return response.status >= 200 && response.status < 300;
+  } catch {
+    return false;
+  }
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const {
     json,
-    token,
     stepUpToken,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     skipAuthRefresh = false,
@@ -159,13 +181,15 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     skipCsrf = false,
     retry429 = DEFAULT_RATE_LIMIT_RETRIES,
     headers,
+    body,
+    cache: _cache,
+    credentials: _credentials,
     __internalRetry,
     ...rest
   } = options;
 
   const method = (rest.method ?? "GET").toUpperCase();
 
-  const authToken = token ? sanitizeHeaderToken(token) : sanitizeHeaderToken(authStorage.getAccessToken() ?? "");
   const safeStepUpToken = stepUpToken ? sanitizeHeaderToken(stepUpToken) : null;
 
   const csrfHeaders: Record<string, string> = {};
@@ -174,60 +198,51 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     if (csrf) csrfHeaders["X-CSRF-Token"] = csrf;
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
-    const response = await fetch(joinUrl(API_URL, path), {
+    const response = await api.request({
       ...rest,
-      signal: controller.signal,
-      credentials: "include",
+      url: normalizeApiPath(path),
+      method,
+      timeout: timeoutMs,
+      validateStatus: () => true,
       headers: {
-        Accept: "application/json",
-        "X-Requested-With": "XMLHttpRequest",
         ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         ...(safeStepUpToken ? { "X-Step-Up-Token": safeStepUpToken } : {}),
         ...csrfHeaders,
-        ...(headers ?? {}),
+        ...headersToRecord(headers),
       },
-      body: json !== undefined ? JSON.stringify(json) : rest.body,
+      data: json !== undefined ? json : body,
     });
 
     const res = response;
-    const requestId = res.headers.get("x-request-id") ?? undefined;
+    const requestId = getResponseHeader(res.headers, "x-request-id") ?? undefined;
 
-    const nextCsrf = res.headers.get("x-csrf-token");
+    const nextCsrf = getResponseHeader(res.headers, "x-csrf-token");
     if (nextCsrf) setCsrfToken(nextCsrf);
 
-    if (res.ok) {
-      const data = await parseResponseBody(res);
-      return data as T;
+    if (res.status >= 200 && res.status < 300) {
+      return (res.status === 204 || res.status === 205 ? null : res.data) as T;
     }
 
-    const payload = await parseResponseBody(res);
+    const payload = res.data;
     const asObject = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
     const code = asObject && typeof asObject.code === "string" ? asObject.code : undefined;
-    const retryAfter = parseRetryAfter(res.headers.get("retry-after"));
+    const retryAfter = parseRetryAfter(getResponseHeader(res.headers, "retry-after"));
     const normalizedMessage = normalizeErrorByCode(code);
     const message = normalizedMessage ?? getErrorMessage(res.status, payload);
     const rawMessage = getRawHttpErrorMessage(payload);
 
-    if (
-      res.status === 401 &&
-      authMode === "required" &&
-      !skipAuthRefresh &&
-      !__internalRetry?.refreshed
-    ) {
-      const refreshed = await tryRefreshSession();
+    if (res.status === 401 && !skipAuthRefresh && !__internalRetry?.refreshed) {
+      const refreshed = await refreshAuthSession(timeoutMs);
       if (refreshed) {
         return apiFetch<T>(path, {
           ...options,
           __internalRetry: { ...__internalRetry, refreshed: true },
         });
       }
+    }
 
-      authStorage.clearAll();
+    if (res.status === 401 && authMode === "required") {
       clearCsrfToken();
       throw new ApiError("Sessão expirada. Faça login novamente.", {
         status: res.status,
@@ -268,12 +283,13 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     });
   } catch (err) {
     if (err instanceof ApiError) throw err;
-    if (err instanceof DOMException && err.name === "AbortError") {
+    if (
+      (err instanceof DOMException && err.name === "AbortError") ||
+      (err instanceof AxiosError && (err.code === "ECONNABORTED" || err.code === "ERR_CANCELED"))
+    ) {
       throw new Error("Tempo limite da requisição excedido. Tente novamente.");
     }
     throw err;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

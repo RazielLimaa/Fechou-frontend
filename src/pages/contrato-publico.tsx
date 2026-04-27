@@ -21,6 +21,7 @@ import {
   normalizeSignerDocument,
   validateSignatureDataUrl,
 } from "../lib/signature-security";
+import { normalizePreviewDocumentUrl } from "../lib/contract-preview";
 import { getCpfCnpjValidationMessage } from "../lib/cpf-cnpj";
 import { HoneypotField, isHoneypotTripped } from "../components/security/HoneypotField";
 import {
@@ -470,7 +471,6 @@ function SignatureCanvas({
   const startDraw = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
       if (disabled) return;
-      e.preventDefault();
       isDrawing.current = true;
       points.current = [getPos(e)];
       setSaved(false);
@@ -482,7 +482,6 @@ function SignatureCanvas({
   const draw = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
       if (disabled || !isDrawing.current) return;
-      e.preventDefault();
       points.current.push(getPos(e));
 
       // Cancela frame anterior e agenda novo (throttle natural)
@@ -955,7 +954,7 @@ function ContractPreviewModal({
                       src={htmlContent ? undefined : documentUrl ?? undefined}
                       srcDoc={htmlContent || undefined}
                       title="Pré-visualização do Contrato"
-                      sandbox="allow-same-origin"
+                      sandbox={htmlContent ? "allow-same-origin" : "allow-scripts"}
                       referrerPolicy="no-referrer"
                       style={{
                         width: "100%",
@@ -1284,7 +1283,7 @@ export default function PublicContract() {
     providerSignatureUrl: proposal.providerSignatureUrl ?? null,
   };
 
-  const previewDocumentUrl = proposal.previewDocumentUrl?.trim() || null;
+  const previewDocumentUrl = normalizePreviewDocumentUrl(proposal.previewDocumentUrl);
   const officialPreviewHtml = proposal.previewHtml?.trim() || "";
   const hasOfficialPreview = Boolean(previewDocumentUrl || officialPreviewHtml);
   const previewHtml = hasOfficialPreview ? officialPreviewHtml : buildContractHtml(previewData);

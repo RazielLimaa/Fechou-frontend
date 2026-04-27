@@ -274,7 +274,7 @@ export default function Hero() {
                   className="font-display"
                   style={{
                     margin: 0,
-                    fontSize: "clamp(3rem, 9vw, 8rem)",
+                    fontSize: "clamp(1.6rem, 10.8vw, 8rem)",
                     lineHeight: 0.88,
                     letterSpacing: "-0.04em",
                     fontWeight: 900,

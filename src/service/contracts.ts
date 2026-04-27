@@ -1,5 +1,4 @@
 import { apiFetch, API_URL } from "./api";
-import { authStorage } from "../lib/auth-storage";
 import { getCsrfToken } from "../lib/csrf";
 import { getSafeHttpErrorMessage } from "../lib/http-error";
 import { normalizeCpfCnpjForSubmit } from "../lib/cpf-cnpj";
@@ -153,12 +152,6 @@ async function buildDirectRequestHeaders(
     "X-Requested-With": "XMLHttpRequest",
     ...extraHeaders,
   };
-  const token = authStorage.getAccessToken()?.trim();
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-    return headers;
-  }
 
   if (DIRECT_MUTATION_METHODS.has(method)) {
     const csrfToken = await getCsrfToken(API_URL);

@@ -46,7 +46,7 @@ import {
   runMccAutoGenerate,
   type MccRunResult,
 } from "../../lib/api/mcc";
-import { getPreviewRefreshDelay } from "../../lib/contract-preview";
+import { getPreviewRefreshDelay, normalizePreviewDocumentUrl } from "../../lib/contract-preview";
 import { LegalContextSection } from "../../components/contracts/legal/LegalContextSection";
 import { LegalBlueprintDialog } from "../../components/contracts/legal/LegalBlueprintDialog";
 import { ContractLayoutPanel, DEFAULT_EDITOR_LAYOUT } from "../../components/contracts/legal/ContractLayoutPanel";
@@ -263,7 +263,7 @@ function escapeHtmlAttribute(value: string): string {
 
 function buildPreviewHtmlFromUrl(url: string): string {
   const safeUrl = escapeHtmlAttribute(url);
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;background:#fff;overflow:hidden}iframe{width:100%;height:100%;border:0;display:block}</style></head><body><iframe src="${safeUrl}" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;background:#fff;overflow:hidden}iframe{width:100%;height:100%;border:0;display:block}</style></head><body><iframe src="${safeUrl}" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe></body></html>`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -405,13 +405,11 @@ function ProviderSignaturePanel({
   };
 
   const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
     isDrawing.current = true;
     lastPos.current = getPos(e);
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
     if (!isDrawing.current || !lastPos.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -782,9 +780,7 @@ export default function EditorContratoPage() {
         const nextHtml = typeof rendered.previewHtml === "string" && rendered.previewHtml.trim()
           ? rendered.previewHtml
           : "";
-        const nextUrl = typeof rendered.previewDocumentUrl === "string"
-          ? rendered.previewDocumentUrl.trim()
-          : "";
+        const nextUrl = normalizePreviewDocumentUrl(rendered.previewDocumentUrl) ?? "";
 
         if (!nextHtml && !nextUrl) {
           throw new Error("O backend nao retornou previewHtml ou previewDocumentUrl.");
@@ -1017,7 +1013,7 @@ export default function EditorContratoPage() {
     setIsPreviewPanning(false);
   }, []);
 
-  const handlePreviewWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+  const handlePreviewWheel = useCallback((event: WheelEvent) => {
     event.preventDefault();
     if (event.ctrlKey || event.metaKey) {
       const direction = event.deltaY > 0 ? -PREVIEW_ZOOM_STEP : PREVIEW_ZOOM_STEP;
@@ -1030,6 +1026,18 @@ export default function EditorContratoPage() {
       y: current.y - event.deltaY,
     }));
   }, []);
+
+  useEffect(() => {
+    const stage = previewStageRef.current;
+    if (!stage) return;
+
+    const onWheel = (event: WheelEvent) => {
+      handlePreviewWheel(event);
+    };
+
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+  }, [handlePreviewWheel]);
 
   const resetPreviewPan = useCallback(() => {
     previewPanStartRef.current = null;
@@ -2326,7 +2334,6 @@ export default function EditorContratoPage() {
             onPointerUp={endPreviewPan}
             onPointerCancel={endPreviewPan}
             onLostPointerCapture={() => endPreviewPan()}
-            onWheel={handlePreviewWheel}
           >
             <div
               className="shrink-0 overflow-visible"
@@ -2391,7 +2398,7 @@ export default function EditorContratoPage() {
                           transformOrigin: "top left",
                         }}
                         title={`Contract Preview - Folha ${pageIndex + 1}`}
-                        sandbox="allow-same-origin"
+                        sandbox={previewHtml ? "allow-same-origin" : "allow-scripts"}
                         referrerPolicy="no-referrer"
                       />
                     </div>

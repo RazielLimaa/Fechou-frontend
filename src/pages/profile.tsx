@@ -1,15 +1,16 @@
-/**
- * profile.tsx — Identidade Fechou! com morphing gradient blobs
+﻿/**
+ * profile.tsx â€” Identidade Fechou! com morphing gradient blobs
  *
  * Background: SVG filter goo + blobs CSS animados com keyframes
- * distintos para cada bolha — efeito de lava lamp premium.
- * Blobs em laranja/âmbar sobre preto profundo.
+ * distintos para cada bolha â€” efeito de lava lamp premium.
+ * Blobs em laranja/Ã¢mbar sobre preto profundo.
  *
- * Grid: 3 colunas assimétricas com toda lógica original preservada.
+ * Grid: 3 colunas assimÃ©tricas com toda lÃ³gica original preservada.
  */
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useRef, useState, useEffect, useCallback } from "react";
+import { useLocation } from "wouter";
 import {
   Camera, Check, ExternalLink, Globe, Github,
   Instagram, Linkedin, Save, Star,
@@ -23,22 +24,77 @@ import {
 } from "../lib/profile-security";
 import {
   getMyProfile, updateMyProfile, fileToDataUrl,
+  sanitizeProfileSlug,
   type UserProfile, type UpdateProfilePayload, type RatingItem,
 } from "../service/profile.service";
+import { ApiError } from "../service/api";
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ORANGE = "#FF6600";
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const ALLOWED_AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]);
 const LEVEL_META: Record<string, { color: string; emoji: string }> = {
-  Bronze:   { color: "#cd7f32", emoji: "🥉" },
-  Prata:    { color: "#94a3b8", emoji: "🥈" },
-  Ouro:     { color: "#f59e0b", emoji: "🥇" },
-  Diamante: { color: "#38bdf8", emoji: "💎" },
-  Lendário: { color: "#a78bfa", emoji: "👑" },
+  Bronze: { color: "#cd7f32", emoji: "\u{1F949}" },
+  Prata: { color: "#94a3b8", emoji: "\u{1F948}" },
+  Ouro: { color: "#f59e0b", emoji: "\u{1F947}" },
+  Diamante: { color: "#38bdf8", emoji: "\u{1F48E}" },
+  Lendario: { color: "#a78bfa", emoji: "\u{1F451}" },
 };
 
-// ─── Micro helpers ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Micro helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const safe = (v: unknown, max = 200) =>
   String(v ?? "").replace(/<[^>]*>/g, "").replace(/javascript:/gi, "").trim().slice(0, max);
+
+function getProfileErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    if (error.status === 400) {
+      if (/imagem|image|avatar|2mb|2 mb|tamanho|large/i.test(error.message)) {
+        return "A imagem deve ter no mÃ¡ximo 2MB.";
+      }
+      return error.message;
+    }
+    if (error.status === 409) return "Este endereÃ§o de perfil jÃ¡ estÃ¡ em uso.";
+    if (error.status >= 500) return "NÃ£o foi possÃ­vel carregar o perfil agora. Tente novamente em instantes.";
+    return error.message;
+  }
+
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
+function toProfileForm(profile: UserProfile): UpdateProfilePayload {
+  return {
+    displayName: profile.name ?? "",
+    bio: profile.bio ?? "",
+    profession: profile.profession ?? "",
+    location: profile.location ?? "",
+    slug: profile.slug ?? sanitizeProfileSlug(profile.name),
+    isPublic: profile.isPublic,
+    avatarUrl: sanitizeProfileAvatarSrc(profile.avatarUrl),
+    linkWebsite: profile.links?.website ?? "",
+    linkLinkedin: profile.links?.linkedin ?? "",
+    linkInstagram: profile.links?.instagram ?? "",
+    linkGithub: profile.links?.github ?? "",
+    linkBehance: profile.links?.behance ?? "",
+  };
+}
+
+function toSavePayload(form: UpdateProfilePayload): UpdateProfilePayload {
+  return {
+    displayName: safe(form.displayName, 120),
+    bio: safe(form.bio, 500),
+    profession: safe(form.profession, 120),
+    location: safe(form.location, 120),
+    slug: sanitizeProfileSlug(form.slug),
+    avatarUrl: form.avatarUrl === undefined ? undefined : sanitizeProfileAvatarSrc(form.avatarUrl),
+    isPublic: Boolean(form.isPublic),
+    linkWebsite: sanitizeProfileExternalUrl(form.linkWebsite) ?? null,
+    linkLinkedin: sanitizeProfileExternalUrl(form.linkLinkedin) ?? null,
+    linkInstagram: sanitizeProfileExternalUrl(form.linkInstagram) ?? null,
+    linkGithub: sanitizeProfileExternalUrl(form.linkGithub) ?? null,
+    linkBehance: sanitizeProfileExternalUrl(form.linkBehance) ?? null,
+  };
+}
 
 function Stars({ n, size = 12 }: { n: number; size?: number }) {
   return (
@@ -121,8 +177,9 @@ function Spinner() {
 }
 
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+// â”€â”€â”€ Componente principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Perfil() {
+  const [, navigate] = useLocation();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState(false);
@@ -140,74 +197,49 @@ export default function Perfil() {
       try {
         const p = await getMyProfile();
         setProfile(p);
-        const slug = p.slug ?? p.name.toLowerCase().normalize("NFD")
-          .replace(/[\u0300-\u036f]/g,"").replace(/\s+/g,"-")
-          .replace(/[^a-z0-9_-]/g,"").slice(0,60);
-        setForm({
-          displayName: p.name ?? "",
-          bio: p.bio ?? "",
-          profession: p.profession ?? "",
-          location: p.location ?? "",
-          slug,
-          isPublic: p.isPublic,
-          avatarUrl: p.avatarUrl,
-          linkWebsite:   p.links.website   ?? "",
-          linkLinkedin:  p.links.linkedin  ?? "",
-          linkInstagram: p.links.instagram ?? "",
-          linkGithub:    p.links.github    ?? "",
-          linkBehance:   p.links.behance   ?? "",
-        });
-      } catch { setError("Não foi possível carregar o perfil."); }
+        setForm(toProfileForm(p));
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          setError("Sessão expirada. Faça login novamente.");
+          navigate("/login");
+          return;
+        }
+        setError(getProfileErrorMessage(err, "Não foi possível carregar o perfil agora. Tente novamente em instantes."));
+      }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [navigate]);
 
   const handleAvatar = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
-    if (!["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"].includes(file.type)) {
-      setError("Formato de imagem inválido. Use PNG, JPG, WEBP ou GIF.");
+    if (!ALLOWED_AVATAR_TYPES.has(file.type)) {
+      setError("Formato de imagem inválido. Use PNG, JPG, JPEG, WEBP ou GIF.");
+      e.target.value = "";
       return;
     }
-    if (file.size > 2_000_000) { setError("Máx. 2 MB."); return; }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setError("A imagem deve ter no máximo 2MB.");
+      e.target.value = "";
+      return;
+    }
     set("avatarUrl", sanitizeProfileAvatarSrc(await fileToDataUrl(file)));
   }, [set]);
 
   const handleSave = async () => {
     setSaving(true); setError(null);
     try {
-      const safePayload: UpdateProfilePayload = {
-        ...form,
-        avatarUrl:
-          form.avatarUrl === undefined
-            ? undefined
-            : sanitizeProfileAvatarSrc(form.avatarUrl),
-        linkWebsite:
-          form.linkWebsite === undefined
-            ? undefined
-            : sanitizeProfileExternalUrl(form.linkWebsite),
-        linkLinkedin:
-          form.linkLinkedin === undefined
-            ? undefined
-            : sanitizeProfileExternalUrl(form.linkLinkedin),
-        linkInstagram:
-          form.linkInstagram === undefined
-            ? undefined
-            : sanitizeProfileExternalUrl(form.linkInstagram),
-        linkGithub:
-          form.linkGithub === undefined
-            ? undefined
-            : sanitizeProfileExternalUrl(form.linkGithub),
-        linkBehance:
-          form.linkBehance === undefined
-            ? undefined
-            : sanitizeProfileExternalUrl(form.linkBehance),
-      };
-
-      const updated = await updateMyProfile(safePayload);
-      setProfile(updated); setSaved(true);
+      const updated = await updateMyProfile(toSavePayload(form));
+      setProfile(updated);
+      setForm(toProfileForm(updated));
+      setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? err?.message ?? "Erro ao salvar.");
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sessão expirada. Faça login novamente.");
+        navigate("/login");
+        return;
+      }
+      setError(getProfileErrorMessage(err, "Erro ao salvar."));
     } finally { setSaving(false); }
   };
 
@@ -226,14 +258,18 @@ export default function Perfil() {
 
   const score    = profile?.score;
   const ratings  = profile?.ratings;
-  const levelMeta = LEVEL_META[score?.level?.label ?? ""] ?? { color: ORANGE, emoji: "⚡" };
+  const levelFallback = LEVEL_META[score?.level?.label ?? ""] ?? { color: "#cd7f32", emoji: "\u{1F949}" };
+  const levelMeta = {
+    color: score?.level?.color || levelFallback.color,
+    emoji: score?.level?.emoji || levelFallback.emoji,
+  };
   const scorePct  = Math.min(100, ((score?.value ?? 0) / 500) * 100);
 
   return (
     <div style={{ background: "#080808", minHeight: "100vh", color: "#fff", fontFamily: "'DM Sans', sans-serif", position: "relative" }}>
 
 
-      {/* ── SVG goo filter (invisível — só define o filtro) ── */}
+      {/* â”€â”€ SVG goo filter (invisÃ­vel â€” sÃ³ define o filtro) â”€â”€ */}
       <svg style={{ position: "absolute", width: 0, height: 0 }} aria-hidden="true">
         <defs>
           <filter id="goo">
@@ -248,7 +284,7 @@ export default function Perfil() {
 
 
 
-      {/* Linha vertical laranja — marca Fechou! */}
+      {/* Linha vertical laranja â€” marca Fechou! */}
       <div style={{
         position: "fixed", top: 0, bottom: 0,
         left: "clamp(14px,3.5vw,44px)", width: 1,
@@ -257,7 +293,7 @@ export default function Perfil() {
       }} aria-hidden="true" />
 
   
-      {/* ── Conteúdo ── */}
+      {/* â”€â”€ ConteÃºdo â”€â”€ */}
       <div style={{ position: "relative", zIndex: 4 }}>
         <Navbar />
 
@@ -266,7 +302,7 @@ export default function Perfil() {
           {/* HERO HEADER */}
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.7 }}>
             <div style={{ display: "flex", alignItems: "flex-end", gap: "clamp(12px,2.5vw,28px)", marginBottom: 4, overflow: "hidden", flexWrap: "wrap" }}>
-              {/* Número grande */}
+              {/* NÃºmero grande */}
               <motion.p
                 initial={{ x: -24, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
                 transition={{ duration: 0.7, ease: [0.16,1,0.3,1] }}
@@ -278,7 +314,7 @@ export default function Perfil() {
                 transition={{ delay: 0.08, duration: 0.7, ease: [0.16,1,0.3,1] }}
                 style={{ paddingBottom: "clamp(3px,0.8vw,10px)", flex: 1, minWidth: 200 }}>
                 <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.36em", color: ORANGE, margin: "0 0 6px" }}>
-                  ● Perfil Premium
+                  â— Perfil Premium
                 </p>
                 <h1 style={{ fontSize: "clamp(28px,5vw,58px)", fontWeight: 900, letterSpacing: "-0.044em", lineHeight: 0.95, margin: 0, fontFamily: "'DM Sans', sans-serif" }}>
                   Sua identidade<br />
@@ -286,7 +322,7 @@ export default function Perfil() {
                 </h1>
               </motion.div>
 
-              {/* Link público */}
+              {/* Link pÃºblico */}
               {publicUrl && (
                 <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.22 }}
@@ -335,10 +371,10 @@ export default function Perfil() {
             )}
           </AnimatePresence>
 
-          {/* ── GRID 3 COLUNAS ── */}
+          {/* â”€â”€ GRID 3 COLUNAS â”€â”€ */}
           <div className="main-grid" style={{ display: "grid", gridTemplateColumns: "178px 1fr 308px", gap: 0, alignItems: "start" }}>
 
-            {/* COL 1 — Ficha vertical */}
+            {/* COL 1 â€” Ficha vertical */}
             <motion.div className="col-left"
               initial={{ opacity: 0, x: -18 }} animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.18, duration: 0.6, ease: [0.16,1,0.3,1] }}
@@ -362,7 +398,7 @@ export default function Perfil() {
                     style={{ position: "absolute", bottom: -4, right: -4, width: 22, height: 22, borderRadius: "50%", background: ORANGE, border: "2px solid #080808", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <Camera size={9} color="#fff" />
                   </button>
-                  <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleAvatar} />
+                  <input ref={fileRef} type="file" accept=".png,.jpg,.jpeg,.webp,.gif,image/png,image/jpeg,image/webp,image/gif" style={{ display: "none" }} onChange={handleAvatar} />
                 </div>
                 <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.65)", margin: "0 0 2px", lineHeight: 1.3 }}>
                   {safe(form.displayName || profile?.name, 28)}
@@ -399,13 +435,13 @@ export default function Perfil() {
                   style={{ width: "100%", padding: "9px 0", borderRadius: 8, border: `1px solid ${form.isPublic ? "rgba(34,197,94,0.25)" : "rgba(255,255,255,0.08)"}`, background: form.isPublic ? "rgba(34,197,94,0.07)" : "rgba(255,255,255,0.02)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.2s", backdropFilter: "blur(8px)" }}>
                   {form.isPublic ? <Eye size={13} color="#22c55e" /> : <EyeOff size={13} color="rgba(255,255,255,0.25)" />}
                   <span style={{ fontSize: 11, fontWeight: 700, color: form.isPublic ? "#22c55e" : "rgba(255,255,255,0.3)", fontFamily: "'DM Sans', sans-serif" }}>
-                    {form.isPublic ? "Público" : "Privado"}
+                    {form.isPublic ? "PÃºblico" : "Privado"}
                   </span>
                 </button>
               </div>
             </motion.div>
 
-            {/* COL 2 — Formulário */}
+            {/* COL 2 â€” FormulÃ¡rio */}
             <motion.div className="col-center"
               initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.12, duration: 0.6, ease: [0.16,1,0.3,1] }}
@@ -419,32 +455,32 @@ export default function Perfil() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 18px" }}>
                   <div style={{ marginBottom: 13 }}>
-                    <FieldLabel>Nome de exibição</FieldLabel>
-                    <Input value={form.displayName ?? ""} placeholder="Seu nome público" maxLength={120}
+                    <FieldLabel>Nome de exibiÃ§Ã£o</FieldLabel>
+                    <Input value={form.displayName ?? ""} placeholder="Seu nome pÃºblico" maxLength={120}
                       onChange={v => set("displayName", v)} />
                   </div>
                   <div style={{ marginBottom: 13 }}>
-                    <FieldLabel>Profissão</FieldLabel>
+                    <FieldLabel>ProfissÃ£o</FieldLabel>
                     <Input value={form.profession ?? ""} placeholder="Ex: Designer UI/UX" maxLength={80}
                       onChange={v => set("profession", v)} />
                   </div>
                 </div>
                 <div style={{ marginBottom: 13 }}>
                   <FieldLabel>Bio</FieldLabel>
-                  <Input value={form.bio ?? ""} placeholder="Conte um pouco sobre você e como trabalha…" multiline maxLength={500}
+                  <Input value={form.bio ?? ""} placeholder="Conte um pouco sobre vocÃª e como trabalhaâ€¦" multiline maxLength={500}
                     onChange={v => set("bio", v)} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 18px" }}>
                   <div style={{ marginBottom: 13 }}>
-                    <FieldLabel>Localização</FieldLabel>
-                    <Input value={form.location ?? ""} placeholder="São Paulo, SP" maxLength={80}
+                    <FieldLabel>LocalizaÃ§Ã£o</FieldLabel>
+                    <Input value={form.location ?? ""} placeholder="SÃ£o Paulo, SP" maxLength={80}
                       onChange={v => set("location", v)} />
                   </div>
                   <div style={{ marginBottom: 13 }}>
                     <FieldLabel>URL do Perfil</FieldLabel>
                     <Input value={form.slug ?? ""} placeholder="seu-slug" maxLength={60}
                       prefix="fechou.com/u/"
-                      onChange={v => set("slug", v.toLowerCase().replace(/[^a-z0-9_-]/g, ""))} />
+                      onChange={v => set("slug", sanitizeProfileSlug(v))} />
                   </div>
                 </div>
               </div>
@@ -460,10 +496,10 @@ export default function Perfil() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 18px" }}>
                 {[
                   { key: "linkWebsite",   Icon: Globe,        label: "Website",   ph: "https://seusite.com" },
-                  { key: "linkLinkedin",  Icon: Linkedin,     label: "LinkedIn",  ph: "https://linkedin.com/in/…" },
-                  { key: "linkInstagram", Icon: Instagram,    label: "Instagram", ph: "https://instagram.com/…" },
-                  { key: "linkGithub",    Icon: Github,       label: "GitHub",    ph: "https://github.com/…" },
-                  { key: "linkBehance",   Icon: ExternalLink, label: "Behance",   ph: "https://behance.net/…" },
+                  { key: "linkLinkedin",  Icon: Linkedin,     label: "LinkedIn",  ph: "https://linkedin.com/in/â€¦" },
+                  { key: "linkInstagram", Icon: Instagram,    label: "Instagram", ph: "https://instagram.com/â€¦" },
+                  { key: "linkGithub",    Icon: Github,       label: "GitHub",    ph: "https://github.com/â€¦" },
+                  { key: "linkBehance",   Icon: ExternalLink, label: "Behance",   ph: "https://behance.net/â€¦" },
                 ].map(({ key, Icon, label, ph }) => (
                   <div key={key}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
@@ -476,16 +512,16 @@ export default function Perfil() {
                 ))}
               </div>
 
-              {/* Citação editorial */}
+              {/* CitaÃ§Ã£o editorial */}
               <div style={{ marginTop: 36, padding: "18px 22px", borderLeft: `3px solid ${ORANGE}`, background: `linear-gradient(to right, rgba(255,102,0,0.05), transparent)`, borderRadius: "0 10px 10px 0", backdropFilter: "blur(8px)" }}>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,0.24)", lineHeight: 1.75, margin: 0, fontStyle: "italic", fontFamily: "'DM Sans', sans-serif" }}>
-                  Seu perfil público é o que seus clientes veem antes de assinar um contrato.
-                  Quanto mais completo, maior a confiança — e a conversão.
+                  Seu perfil pÃºblico Ã© o que seus clientes veem antes de assinar um contrato.
+                  Quanto mais completo, maior a confianÃ§a â€” e a conversÃ£o.
                 </p>
               </div>
             </motion.div>
 
-            {/* COL 3 — Score + Avaliações */}
+            {/* COL 3 â€” Score + AvaliaÃ§Ãµes */}
             <motion.div className="col-right"
               initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.22, duration: 0.6, ease: [0.16,1,0.3,1] }}
@@ -505,7 +541,7 @@ export default function Perfil() {
                   padding: "20px 20px", marginBottom: 12,
                   backdropFilter: "blur(12px)",
                 }}>
-                  {/* Número fantasma */}
+                  {/* NÃºmero fantasma */}
                   <p style={{ position: "absolute", right: -10, bottom: -16, fontSize: 90, fontWeight: 900, letterSpacing: "-0.06em", color: `${levelMeta.color}0a`, lineHeight: 1, margin: 0, userSelect: "none", fontFamily: "'DM Sans', sans-serif" }}>
                     {score?.value ?? 0}
                   </p>
@@ -513,7 +549,7 @@ export default function Perfil() {
                     <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
                       <span style={{ fontSize: 18 }}>{levelMeta.emoji}</span>
                       <span style={{ fontSize: 13, fontWeight: 800, color: levelMeta.color, letterSpacing: "-0.01em", fontFamily: "'DM Sans', sans-serif" }}>
-                        {score?.level?.label ?? "—"}
+                        {score?.level?.label ?? "â€”"}
                       </span>
                     </div>
                     <p style={{ fontSize: 48, fontWeight: 900, letterSpacing: "-0.06em", color: "#fff", lineHeight: 1, margin: "0 0 12px", fontFamily: "'DM Sans', sans-serif" }}>
@@ -526,7 +562,7 @@ export default function Perfil() {
                         style={{ height: "100%", borderRadius: 999, background: levelMeta.color }} />
                     </div>
                     <p style={{ fontSize: 9, color: "rgba(255,255,255,0.18)", margin: 0, letterSpacing: "0.04em" }}>
-                      {score?.value ?? 0} / 500 pts para Lendário
+                      {score?.value ?? 0} / 500 pts para LendÃ¡rio
                     </p>
                   </div>
                 </div>
@@ -535,8 +571,8 @@ export default function Perfil() {
                 <div style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)", overflow: "hidden", backdropFilter: "blur(8px)" }}>
                   {[
                     { action: "Contrato vendido", pts: "+50", color: "#22c55e" },
-                    { action: "Cancelamento",     pts: "−30", color: "#ef4444" },
-                    { action: "15 dias pendente", pts: "−10", color: "#f59e0b" },
+                    { action: "Cancelamento",     pts: "âˆ’30", color: "#ef4444" },
+                    { action: "15 dias pendente", pts: "âˆ’10", color: "#f59e0b" },
                   ].map((r, i) => (
                     <div key={r.action} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 13px", borderBottom: i < 2 ? "1px solid rgba(255,255,255,0.05)" : "none", background: "rgba(255,255,255,0.02)" }}>
                       <span style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>{r.action}</span>
@@ -548,12 +584,12 @@ export default function Perfil() {
 
               <Rule />
 
-              {/* Avaliações */}
+              {/* AvaliaÃ§Ãµes */}
               <div style={{ marginTop: 18 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
                     <SectionMark color="#f59e0b" />
-                    <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.28em", color: "rgba(255,255,255,0.28)", margin: 0 }}>Avaliações</p>
+                    <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.28em", color: "rgba(255,255,255,0.28)", margin: 0 }}>AvaliaÃ§Ãµes</p>
                   </div>
                   {ratings && ratings.totalRatings > 0 && (
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -566,8 +602,8 @@ export default function Perfil() {
                 {!ratings || ratings.totalRatings === 0 ? (
                   <div style={{ padding: "26px 0", textAlign: "center", borderRadius: 12, border: "1px dashed rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.01)", backdropFilter: "blur(8px)" }}>
                     <Star size={22} color="rgba(255,255,255,0.07)" style={{ margin: "0 auto 10px", display: "block" }} />
-                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.18)", margin: "0 0 3px", fontWeight: 600 }}>Nenhuma avaliação</p>
-                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.1)", margin: 0, lineHeight: 1.6 }}>Aparecem após clientes<br />finalizarem contratos.</p>
+                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.18)", margin: "0 0 3px", fontWeight: 600 }}>Nenhuma avaliaÃ§Ã£o</p>
+                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.1)", margin: 0, lineHeight: 1.6 }}>Aparecem apÃ³s clientes<br />finalizarem contratos.</p>
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -605,7 +641,7 @@ export default function Perfil() {
             </motion.div>
           </div>
 
-          {/* ── SAVE BAR sticky ── */}
+          {/* â”€â”€ SAVE BAR sticky â”€â”€ */}
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.38, duration: 0.5 }}
             style={{ position: "sticky", bottom: 24, marginTop: 40, display: "flex", justifyContent: "flex-end" }}>

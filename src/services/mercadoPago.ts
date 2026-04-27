@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { API_URL } from "../service/api";
 import { normalizeCpfCnpjDigits } from "../lib/cpf-cnpj";
 
 export interface MercadoPagoStatusResponse {
@@ -117,12 +118,7 @@ function normalizeStatusPayload(payload: any): MercadoPagoStatusResponse {
 }
 
 function buildApiOrigin(): string {
-  // Preferir backend explícito (dev/prod). Ex: https://api.seudominio.com
-  const envBase = String(import.meta.env.VITE_API_URL ?? "").trim();
-  const base = envBase.length > 0 ? envBase : window.location.origin;
-
-  // remove trailing slash
-  const cleaned = base.replace(/\/$/, "");
+  const cleaned = API_URL.replace(/\/$/, "");
 
   // Se o cara colocou VITE_API_URL já com /api no final, não duplica.
   // Ex: https://meu-backend.com/api  -> origin final = https://meu-backend.com

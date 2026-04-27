@@ -18,6 +18,7 @@ function injectCspConnectSrc(extraConnectSrc: string): Plugin {
     name: "inject-csp-connect-src",
     transformIndexHtml(html) {
       if (!extraConnectSrc) return html;
+      if (html.includes(`connect-src 'self' ${extraConnectSrc}`)) return html;
 
       return html.replace(
         "connect-src 'self'",

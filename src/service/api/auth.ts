@@ -1,4 +1,3 @@
-import { authStorage } from "../../lib/auth-storage";
 import { clearCsrfToken } from "../../lib/csrf";
 import { apiFetch, ApiError } from "../api";
 
@@ -15,67 +14,31 @@ export type AuthMessageResponse = { ok: boolean; message: string };
 
 const API_PREFIX = "/api/auth";
 
-function persistSession(response: AuthResponse): AuthResponse {
-  if (response.token) authStorage.setAccessToken(response.token);
-  authStorage.setUserRaw(JSON.stringify(response.user));
-  return response;
-}
-
 export function login(email: string, password: string) {
   return apiFetch<AuthResponse>(`${API_PREFIX}/login`, {
     method: "POST",
     json: { email, password },
-  }).then(persistSession);
+    skipAuthRefresh: true,
+  });
 }
 
 export function register(name: string, email: string, password: string) {
   return apiFetch<AuthResponse>(`${API_PREFIX}/register`, {
     method: "POST",
     json: { name, email, password },
-  }).then(persistSession);
-}
-
-export function loginWithGoogle(code: string, redirectUri?: string) {
-  return apiFetch<AuthResponse>(`${API_PREFIX}/google`, {
-    method: "POST",
-    json: {
-      code,
-      ...(redirectUri ? { redirectUri } : {}),
-    },
-  }).then(persistSession);
+    skipAuthRefresh: true,
+  });
 }
 
 export async function me(): Promise<AuthUser | null> {
   try {
     return await apiFetch<AuthUser>(`${API_PREFIX}/me`, {
       method: "GET",
-      skipAuthRefresh: true,
       authMode: "optional",
       retry429: 0,
     });
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
-      return null;
-    }
-
-    throw err;
-  }
-}
-
-export async function refresh(): Promise<AuthResponse | null> {
-  try {
-    const response = await apiFetch<AuthResponse>(`${API_PREFIX}/refresh`, {
-      method: "POST",
-      skipAuthRefresh: true,
-      authMode: "optional",
-      retry429: 0,
-    });
-
-    return persistSession(response);
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 401) {
-      authStorage.clearAll();
-      clearCsrfToken();
       return null;
     }
 
@@ -88,7 +51,6 @@ export function logout() {
     method: "POST",
     skipAuthRefresh: true,
   }).finally(() => {
-    authStorage.clearAll();
     clearCsrfToken();
   });
 }

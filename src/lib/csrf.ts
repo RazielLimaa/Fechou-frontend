@@ -1,4 +1,5 @@
 let csrfToken: string | null = null;
+const DEFAULT_API_URL = "https://fechou-backend-g69o.onrender.com";
 
 export function setCsrfToken(token: string | null | undefined): void {
   const t = token?.trim();
@@ -17,7 +18,8 @@ export async function getCsrfToken(baseUrl?: string): Promise<string | null> {
   if (csrfToken) return csrfToken;
 
   try {
-    const endpoint = baseUrl ? `${baseUrl.replace(/\/+$/, "")}/api/auth/csrf` : "/api/auth/csrf";
+    const apiBase = (baseUrl ?? DEFAULT_API_URL).replace(/\/+$/, "");
+    const endpoint = `${apiBase}/api/auth/csrf`;
     const res = await fetch(endpoint, {
       method: "GET",
       credentials: "include",

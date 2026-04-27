@@ -75,7 +75,7 @@ export function ContractPreview({
                   onLoad={onLoad}
                   className="h-full w-full border-0"
                   title={title}
-                  sandbox="allow-same-origin"
+                  sandbox="allow-scripts"
                   referrerPolicy="no-referrer"
                 />
               ) : (

@@ -2,19 +2,16 @@ import { motion } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Eye, EyeOff, ArrowRight } from "lucide-react";
-import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
 import { useTranslation } from "react-i18next";
-import { login, loginWithGoogle } from "../service/api/auth";
+import { API_URL } from "../service/api";
+import { login } from "../service/api/auth";
 import { rateLimiter, isValidEmail, preventClickjacking } from "../lib/security";
 import { consumePostAuthRedirect } from "../lib/navigation-intent";
 import { HoneypotField, isHoneypotTripped } from "../components/security/HoneypotField";
 import { useSession } from "../context/session-context";
 import { LanguageToggle } from "../components/LanguageToggle";
 
-const GOOGLE_CLIENT_ID = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "").trim();
-const GOOGLE_AUTH_ENABLED = GOOGLE_CLIENT_ID.length > 0;
-
-// ── Canvas ────────────────────────────────────────────────────────────────────
+// â”€â”€ Canvas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Bg() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -71,7 +68,7 @@ function Bg() {
   );
 }
 
-// ── Ícone Google ──────────────────────────────────────────────────────────────
+// â”€â”€ Ãcone Google â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function GoogleIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -83,7 +80,7 @@ function GoogleIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-// ── Input estilizado ──────────────────────────────────────────────────────────
+// â”€â”€ Input estilizado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Field({
   label, type, value, onChange, placeholder, right, focused, onFocus, onBlur, autoComplete,
 }: {
@@ -130,7 +127,7 @@ function Field({
   );
 }
 
-// ── Formulário principal ──────────────────────────────────────────────────────
+// â”€â”€ FormulÃ¡rio principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function LoginForm() {
   const { t } = useTranslation();
   const [, navigate] = useLocation();
@@ -153,6 +150,25 @@ function LoginForm() {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasOAuthError = params.get("oauth") === "error";
+    const hasFrontendGoogleCallback = params.has("code") || params.has("state") || params.has("scope");
+    if (!hasOAuthError && !hasFrontendGoogleCallback) return;
+
+    setError(t("auth.login.errors.googleGeneric"));
+    params.delete("oauth");
+    params.delete("code");
+    params.delete("state");
+    params.delete("scope");
+    params.delete("authuser");
+    params.delete("prompt");
+    params.delete("iss");
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", nextUrl);
+  }, [t]);
+
+  useEffect(() => {
     if (status !== "authenticated") {
       redirectedRef.current = false;
       return;
@@ -165,31 +181,17 @@ function LoginForm() {
     navigate(target, { replace: true });
   }, [status, navigate]);
 
-  // ── fluxo OAuth moderno: Authorization Code + PKCE ───────────────────────
-  // O frontend recebe apenas `code` e o backend faz a troca segura por tokens.
-  const googleLogin = useGoogleLogin({
-    flow: "auth-code",
-    scope: "openid email profile",
+  const redirectToBackendGoogle = () => {
+    if (isAnyLoading) return;
 
-    onSuccess: async (tokenResponse) => {
-      setError(null);
-      setGoogleLoading(true);
-      try {
-        const redirectUri = String(import.meta.env.VITE_GOOGLE_REDIRECT_URI ?? "").trim() || `${window.location.origin}/login`;
-        await loginWithGoogle(tokenResponse.code, redirectUri);
-        await refreshSession();
-        navigate(consumePostAuthRedirect("/propostas"));
-      } catch {
-        setError(t("auth.login.errors.googleGeneric"));
-      } finally {
-        setGoogleLoading(false);
-      }
-    },
+    setError(null);
+    setGoogleLoading(true);
 
-    onError: (err) => {
-      setError(t("auth.login.errors.googleFailed"));
-    },
-  });
+    const redirectTo = consumePostAuthRedirect("/propostas");
+    const authUrl = new URL("/api/auth/google", API_URL);
+    authUrl.searchParams.set("redirectTo", redirectTo);
+    window.location.href = authUrl.toString();
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(null);
@@ -226,7 +228,7 @@ function LoginForm() {
         <LanguageToggle compact />
       </div>
 
-      {/* ══ ESQUERDA ══════════════════════════════════════════════════════════ */}
+      {/* â•â• ESQUERDA â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <div className="hidden lg:flex" style={{
         width: "48%", flexDirection: "column", justifyContent: "space-between",
         position: "relative", overflow: "hidden",
@@ -282,7 +284,7 @@ function LoginForm() {
         </div>
       </div>
 
-      {/* ══ DIREITA: formulário ══════════════════════════════════════════════ */}
+      {/* â•â• DIREITA: formulÃ¡rio â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <div style={{
         flex: 1, display: "flex", flexDirection: "column",
         justifyContent: "center", alignItems: "center",
@@ -326,12 +328,12 @@ function LoginForm() {
             </motion.div>
           )}
 
-          {/* ── Botão Google ── */}
+          {/* â”€â”€ BotÃ£o Google â”€â”€ */}
           <div style={{ marginBottom: 20 }}>
             <motion.button
               type="button"
-              onClick={() => GOOGLE_AUTH_ENABLED && googleLogin()}
-              disabled={isAnyLoading || !GOOGLE_AUTH_ENABLED}
+              onClick={redirectToBackendGoogle}
+              disabled={isAnyLoading}
               aria-label={t("auth.login.googleAria")}
               aria-busy={googleLoading}
               whileHover={!isAnyLoading ? { scale: 1.02, borderColor: "rgba(255,102,0,0.35)", background: "rgba(255,102,0,0.05)" } : {}}
@@ -341,14 +343,14 @@ function LoginForm() {
                 background: "rgba(255,255,255,0.03)",
                 border: "1px solid rgba(255,255,255,0.08)",
                 color: "rgba(255,255,255,0.75)", fontSize: 13, fontWeight: 600,
-                cursor: isAnyLoading || !GOOGLE_AUTH_ENABLED ? "not-allowed" : "pointer", fontFamily: "inherit",
+                cursor: isAnyLoading ? "not-allowed" : "pointer", fontFamily: "inherit",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                transition: "all 0.2s", opacity: isAnyLoading || !GOOGLE_AUTH_ENABLED ? 0.5 : 1,
+                transition: "all 0.2s", opacity: isAnyLoading ? 0.5 : 1,
               }}
             >
               {googleLoading
                 ? <div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-                : <><GoogleIcon size={16} /><span>{GOOGLE_AUTH_ENABLED ? t("auth.login.googleEnabled") : t("auth.login.googleDisabled")}</span></>
+                : <><GoogleIcon size={16} /><span>{t("auth.login.googleEnabled")}</span></>
               }
             </motion.button>
           </div>
@@ -426,19 +428,6 @@ function LoginForm() {
   );
 }
 
-// ── Wrapper com GoogleOAuthProvider ───────────────────────────────────────────
 export default function Login() {
-  const { t } = useTranslation();
-
-  useEffect(() => {
-    if (!GOOGLE_AUTH_ENABLED && import.meta.env.DEV) {
-      console.warn(t("auth.login.errors.googleNotConfigured"));
-    }
-  }, [t]);
-
-  return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID || "disabled"}>
-      <LoginForm />
-    </GoogleOAuthProvider>
-  );
+  return <LoginForm />;
 }

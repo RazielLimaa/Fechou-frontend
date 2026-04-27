@@ -1,5 +1,4 @@
 import React from "react";
-import { authStorage } from "../lib/auth-storage";
 // src/pages/Propostas.tsx
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -291,8 +290,6 @@ export default function Propostas() {
     if (reloadInFlight.current) return;
     reloadInFlight.current = true;
 
-    const token = authStorage.getAccessToken();
-    if (!token) { reloadInFlight.current = false; navigateRef.current("/login"); return; }
     setIsLoading(true); setPlanLoading(true); setError(null); setContractsError(null);
     setIsLoading(true); setPlanLoading(true); setError(null); setContractsError(null);
     try {

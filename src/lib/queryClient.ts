@@ -1,14 +1,8 @@
 import { QueryClient, type QueryFunction } from "@tanstack/react-query";
-import { authStorage } from "./auth-storage";
+import { API_URL } from "../service/api";
 import { getSafeHttpErrorMessage } from "./http-error";
 
-function getAuthToken(): string | null {
-  return authStorage.getAccessToken();
-}
-
 function buildHeaders(hasJsonBody: boolean, extraHeaders?: Record<string, string>): HeadersInit {
-  const token = getAuthToken();
-
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Cache-Control": "no-store",
@@ -16,12 +10,18 @@ function buildHeaders(hasJsonBody: boolean, extraHeaders?: Record<string, string
   };
 
   if (hasJsonBody) headers["Content-Type"] = "application/json";
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   return {
     ...headers,
     ...(extraHeaders ?? {}),
   };
+}
+
+function resolveApiUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  const safeBase = API_URL.replace(/\/+$/, "");
+  const safePath = url.startsWith("/") ? url : `/${url}`;
+  return `${safeBase}${safePath}`;
 }
 
 async function throwIfResNotOk(res: Response) {
@@ -43,7 +43,7 @@ export async function apiRequest(
 ): Promise<Response> {
   const hasBody = data !== undefined;
 
-  const res = await fetch(url, {
+  const res = await fetch(resolveApiUrl(url), {
     method,
     headers: buildHeaders(hasBody, options?.headers),
     body: hasBody ? JSON.stringify(data) : undefined,
@@ -59,7 +59,7 @@ type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: { on401: UnauthorizedBehavior }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const res = await fetch(resolveApiUrl(queryKey.join("/") as string), {
       credentials: "include",
       headers: buildHeaders(false),
     });

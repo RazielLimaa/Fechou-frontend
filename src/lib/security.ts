@@ -1,4 +1,3 @@
-import { authStorage } from "./auth-storage";
 import { isValidCnpj, isValidCpf } from "./cpf-cnpj";
 // ── Security utilities ──────────────────────────────────────────────
 
@@ -142,7 +141,6 @@ export function preventClickjacking(): void {
  * Clear all sensitive data from storage on logout.
  */
 export function secureLogout(): void {
-  authStorage.clearAll();
   // Clear all query caches
   window.location.href = "/login";
 }
